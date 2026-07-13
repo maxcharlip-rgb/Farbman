@@ -1,0 +1,512 @@
+'use strict';
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Number(n)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let ROLE = localStorage.getItem('farbman_role') || 'Reviewer';
+
+async function api(path, opts = {}) {
+  const o = { headers: { 'content-type': 'application/json' }, ...opts };
+  if (o.body && typeof o.body === 'object') {
+    o.body = JSON.stringify({ ...o.body, role: ROLE });
+  }
+  const res = await fetch(path, o);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { data });
+  return data;
+}
+
+// ── Router ─────────────────────────────────────────────
+const routes = [
+  [/^#\/$/, renderPortfolio],
+  [/^#\/property\/(.+)$/, renderProperty],
+  [/^#\/calibration$/, renderCalibration],
+  [/^#\/audit$/, renderAudit],
+  [/^#\/import$/, renderImport],
+];
+
+function router() {
+  const hash = location.hash || '#/';
+  for (const [re, fn] of routes) {
+    const m = hash.match(re);
+    if (m) {
+      setActiveNav(hash);
+      fn(...m.slice(1)).catch((e) => ($('#view').innerHTML = errorBox(e.message)));
+      return;
+    }
+  }
+  location.hash = '#/';
+}
+function setActiveNav(hash) {
+  const key = hash === '#/' ? 'portfolio' : hash.replace('#/', '').split('/')[0];
+  $$('.mainnav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === key));
+}
+function errorBox(msg) {
+  return `<div class="panel"><div class="empty">⚠ ${esc(msg)}</div></div>`;
+}
+
+// ── Portfolio dashboard ────────────────────────────────
+let PORTFOLIO_FILTER = 'All';
+async function renderPortfolio() {
+  const data = await api('/api/portfolio');
+  const props = data.properties;
+  const divisions = ['All', ...Object.keys(data.divisionCounts)];
+
+  const agg = {
+    total: props.length,
+    reviewed: props.filter((p) => p.status.state !== 'not_run').length,
+    ready: props.filter((p) => p.status.state === 'ready').length,
+    signed: props.filter((p) => p.status.state === 'signed_off').length,
+    secondOpinion: props.reduce((a, p) => a + (p.summary ? p.summary.counts.escalate : 0), 0),
+    exceptions: props.reduce((a, p) => a + (p.summary ? p.summary.exceptions : 0), 0),
+  };
+
+  const shown = props.filter((p) => PORTFOLIO_FILTER === 'All' || p.division === PORTFOLIO_FILTER);
+
+  const stat = (n, l, cls = '') => `<div class="kpi ${cls}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+
+  const rows = shown
+    .map((p) => {
+      const s = p.status;
+      const sum = p.summary;
+      const badge = `<span class="state state-${s.state}">${esc(s.label)}</span>`;
+      const counts = sum
+        ? `<div class="minicounts">` +
+          chipN(sum.verified, 'ok', '✓') +
+          chipN(sum.exceptions, 'bad', '✗') +
+          chipN(sum.counts.flag, 'warn', 'flag') +
+          chipN(sum.counts.escalate, 'esc', '2nd') +
+          `</div>`
+        : `<span class="muted">—</span>`;
+      return `<tr data-href="#/property/${esc(p.id)}">
+        <td><div class="pname">${esc(p.name)}</div><div class="muted sm">${esc(p.period ? p.period.label : '')}</div></td>
+        <td><span class="divtag">${esc(p.division)}</span></td>
+        <td>${badge}</td>
+        <td>${counts}</td>
+        <td class="go">→</td>
+      </tr>`;
+    })
+    .join('');
+
+  $('#view').innerHTML = `
+    <div class="kpis">
+      ${stat(agg.total, 'Properties')}
+      ${stat(agg.reviewed + '/' + agg.total, 'First-pass run')}
+      ${stat(agg.ready, 'Ready to sign', agg.ready ? 'good' : '')}
+      ${stat(agg.signed, 'Signed off', 'good')}
+      ${stat(agg.exceptions, 'Open exceptions', agg.exceptions ? 'bad' : '')}
+      ${stat(agg.secondOpinion, 'Second-opinion items', agg.secondOpinion ? 'esc' : '')}
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Portfolio</h2>
+        <div class="divfilter">${divisions
+          .map((d) => `<button class="dpill ${d === PORTFOLIO_FILTER ? 'on' : ''}" data-div="${esc(d)}">${esc(d)}${d !== 'All' ? ` <b>${data.divisionCounts[d]}</b>` : ''}</button>`)
+          .join('')}</div>
+      </div>
+      ${PORTFOLIO_FILTER !== 'All' && data.divisionBlurbs && data.divisionBlurbs[PORTFOLIO_FILTER]
+        ? `<p class="divblurb">${esc(data.divisionBlurbs[PORTFOLIO_FILTER])}</p>` : ''}
+      <table class="grid">
+        <thead><tr><th>Property</th><th>Division</th><th>Status</th><th>First-pass result</th><th></th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="5" class="empty">No properties in this division.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+
+  $$('.dpill').forEach((b) => (b.onclick = () => { PORTFOLIO_FILTER = b.dataset.div; renderPortfolio(); }));
+  $$('tr[data-href]').forEach((tr) => (tr.onclick = () => (location.hash = tr.dataset.href)));
+}
+function chipN(n, cls, label) {
+  return `<span class="mc mc-${cls}" title="${label}">${n}</span>`;
+}
+
+// ── Property workspace ─────────────────────────────────
+async function renderProperty(id) {
+  const [d, trend] = await Promise.all([
+    api('/api/property/' + id),
+    api('/api/trend/' + id).catch(() => null),
+  ]);
+  const { property, report, review, dispositions, signoff, blocking } = d;
+  if (!report) return ($('#view').innerHTML = errorBox('Report not found'));
+
+  $('#view').innerHTML = `
+    <a class="back" href="#/">← Portfolio</a>
+    <div class="workspace">
+      <section class="panel report-panel">
+        <div class="report-head">
+          <div>
+            <div class="muted sm">${esc(property.division)} · ${esc(report.period.label)}</div>
+            <h2 class="rname">${esc(report.property)}</h2>
+            <div class="muted sm">Prepared by ${esc(report.preparedBy ? report.preparedBy.name : '—')}${report.reviewedBy ? ' · Reviewed by ' + esc(report.reviewedBy.name) : ''}</div>
+          </div>
+          <span class="status ${report.status === 'signed_off' ? 'signed_off' : 'draft'}">${esc((report.status || '').replace(/_/g, ' '))}</span>
+        </div>
+        <div class="draft-note">Sample data, for prototype demo only.</div>
+        <div id="reportView" class="report-view"></div>
+        <div id="trendView"></div>
+      </section>
+
+      <section class="panel findings-panel">
+        ${review ? '' : `<div class="run-cta"><p>This draft hasn't had a first-pass review yet.</p><button id="runBtn" class="run-btn">Run first-pass review</button></div>`}
+        <div id="signoffBar"></div>
+        <div id="summary"></div>
+        <div id="briefing" class="briefing hidden"></div>
+        <div id="findings"></div>
+        <div id="auditTrail"></div>
+      </section>
+    </div>`;
+
+  renderReport(report);
+  renderTrend(trend);
+
+  if ($('#runBtn')) $('#runBtn').onclick = () => runReview(property.id);
+  if (review) {
+    renderSignoffBar(d);
+    renderSummary(review.summary);
+    renderFindings(review, dispositions, report.id);
+    renderAuditTrail(d.audit);
+    loadBriefing(property.id);
+  }
+}
+
+// ── Multi-month trend (most useful for receivership per asset mgmt) ──
+function spark(vals) {
+  const pts = vals.filter((v) => v != null);
+  if (pts.length < 2) return '';
+  const w = 120, h = 26, pad = 3;
+  const min = Math.min(...pts), max = Math.max(...pts);
+  const span = max - min || 1;
+  const xs = vals.map((v, i) => (vals.length === 1 ? w / 2 : pad + (i * (w - 2 * pad)) / (vals.length - 1)));
+  const ys = vals.map((v) => (v == null ? null : h - pad - ((v - min) / span) * (h - 2 * pad)));
+  const line = vals.map((v, i) => (v == null ? null : `${xs[i].toFixed(1)},${ys[i].toFixed(1)}`)).filter(Boolean).join(' ');
+  const lastIdx = vals.length - 1;
+  const dot = ys[lastIdx] == null ? '' : `<circle cx="${xs[lastIdx].toFixed(1)}" cy="${ys[lastIdx].toFixed(1)}" r="2.5" fill="var(--accent)"/>`;
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="1.6"/>${dot}</svg>`;
+}
+const kfmt = (v) => (v == null ? '—' : (v < 0 ? '-' : '') + '$' + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + 'k' : Math.abs(v).toFixed(0)));
+
+function renderTrend(t) {
+  const el = $('#trendView');
+  if (!el) return;
+  if (!t || !t.points || t.points.length < 2) { el.innerHTML = ''; return; }
+  const P = t.points;
+  const monthLabel = (m) => new Date(m + '-15').toLocaleString('en-US', { month: 'short' });
+  const metric = (label, key, fmt) => {
+    const vals = P.map((p) => p[key]);
+    if (vals.every((v) => v == null)) return '';
+    return `<tr><td class="tlabel">${label}</td><td class="tspark">${spark(vals)}</td>${vals.map((v) => `<td class="amt">${fmt(v)}</td>`).join('')}</tr>`;
+  };
+  el.innerHTML = `
+    <h3>Trend — last ${P.length} periods</h3>
+    <p class="muted sm">Reporting is cumulative: a prior-month error propagates until caught. The trend is where it surfaces.</p>
+    <table class="fin trend">
+      <thead><tr><th></th><th></th>${P.map((p) => `<th class="amt">${monthLabel(p.month)}</th>`).join('')}</tr></thead>
+      <tbody>
+        ${metric('NOI (period)', 'noi', kfmt)}
+        ${metric('YTD NOI', 'ytdNOI', kfmt)}
+        ${metric('Revenue', 'revenue', kfmt)}
+        ${metric('Expenses', 'expenses', kfmt)}
+        ${metric('Ending cash', 'endingCash', kfmt)}
+        ${metric('Occupancy', 'occupancyPct', (v) => (v == null ? '—' : v + '%'))}
+      </tbody>
+    </table>`;
+}
+
+function renderReport(r) {
+  const is = r.incomeStatement || {};
+  const row = (label, amt, opt = {}) =>
+    `<tr class="${opt.total ? 'total' : ''}"><td>${esc(label)}${opt.fn ? `<span class="fn">${opt.fn}</span>` : ''}</td><td class="amt ${amt < 0 ? 'neg' : ''}">${money(amt)}</td></tr>`;
+  const es = r.execSummary || {};
+  const ar = r.receivablesAging;
+  let h = '';
+  if (es.narrative || es.monthTotalRevenue != null) {
+    h += `<h3>Executive Summary</h3><p class="exec">`;
+    if (es.ytdNOI != null) h += `YTD NOI ${money(es.ytdNOI)}. `;
+    if (es.monthTotalRevenue != null) h += `Period revenue ${money(es.monthTotalRevenue)}, operating expenses ${money(es.monthOperatingExpenses)}. `;
+    if (es.occupancyPct != null) h += `Occupancy ${es.occupancyPct}%. `;
+    h += esc(es.narrative || '') + `</p>`;
+  }
+  h += `<h3>Income Statement</h3><table class="fin">`;
+  (is.revenue || []).forEach((l) => (h += row(l.label, l.amount, { fn: l.footnote })));
+  h += row('Total Revenue', is.totalRevenue, { total: true });
+  (is.expenses || []).forEach((l) => (h += row(l.label, l.amount, { fn: l.footnote })));
+  h += row('Total Expenses', is.totalExpenses, { total: true });
+  h += row('Net Operating Income (PTD)', is.noiPTD, { total: true });
+  h += `</table>`;
+  if (r.balance) {
+    h += `<h3>Balance Summary</h3><table class="fin">`;
+    h += row('Beginning Cash', r.balance.beginningCash);
+    h += row('Net Cash Flow (Period)', r.balance.netCashFlow);
+    h += row('Ending Cash', r.balance.endingCash, { total: true });
+    h += `</table>`;
+  }
+  if (ar) {
+    h += `<h3>Receivables Aging</h3><table class="fin">`;
+    h += row('Current', ar.current) + row('0–30 Days', ar.d0_30) + row('30–60 Days', ar.d30_60) + row('60–90 Days', ar.d60_90) + row('90+ Days', ar.d90_plus) + row('Total', ar.total, { total: true });
+    h += `</table>`;
+  }
+  // Narrative notes — where reviewers spend most of their time.
+  for (const sec of Object.values(r.narrative || {})) {
+    const text = sec.revisedText || sec.text;
+    if (!text) continue;
+    h += `<h3>${esc(sec.title)}</h3><p class="exec">${esc(text)}</p>`;
+  }
+  if (r.bankRec && r.bankRec.note) h += `<div class="note-line"><strong>Bank rec note:</strong> ${esc(r.bankRec.note)}</div>`;
+  if (r.footnotes) h += Object.entries(r.footnotes).map(([k, v]) => `<div class="note-line"><span class="fn">${esc(k)}</span> ${esc(v)}</div>`).join('');
+  $('#reportView').innerHTML = h;
+}
+
+async function runReview(propertyId) {
+  const btn = $('#runBtn');
+  if (btn) { btn.classList.add('loading'); btn.disabled = true; }
+  try {
+    await api('/api/review', { method: 'POST', body: { propertyId } });
+    renderProperty(propertyId); // re-render with results
+  } catch (e) {
+    $('#findings').innerHTML = errorBox(e.message);
+  }
+}
+
+function renderSummary(s) {
+  $('#summary').innerHTML =
+    `<p class="headline">${esc(s.headline)}</p>` +
+    `<div class="tier-counts">` +
+    tc('verified', s.verified, 'Auto-verified') +
+    tc('exception', s.exceptions, 'Deterministic exceptions') +
+    tc('flag', s.counts.flag, 'To confirm') +
+    tc('escalate', s.counts.escalate, 'Second opinion') +
+    `</div><p class="disclaimer">${esc(s.disclaimer)}</p>`;
+}
+function tc(cls, n, label) { return `<div class="tc ${cls}"><div class="n">${n}</div><div class="l">${label}</div></div>`; }
+
+const SEV_RANK = { high: 0, medium: 1, low: 2, info: 3 };
+function renderFindings(review, dispositions, reportId) {
+  const groups = { assert: [], flag: [], escalate: [] };
+  review.findings.forEach((f) => groups[f.tier].push(f));
+  const sorter = (a, b) => (a.passed === false ? 0 : 1) - (b.passed === false ? 0 : 1) || (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9);
+  Object.values(groups).forEach((g) => g.sort(sorter));
+  const t = review.summary.tiers;
+  $('#findings').innerHTML =
+    tierGroup('assert', 'Deterministic — verified or certain', t.assert.blurb, groups.assert, review, dispositions) +
+    tierGroup('flag', 'Flag for reviewer', t.flag.blurb, groups.flag, review, dispositions) +
+    tierGroup('escalate', 'Second opinion required', t.escalate.blurb, groups.escalate, review, dispositions);
+  wireFindingActions(reportId);
+}
+
+function tierGroup(tier, label, blurb, items, review, dispositions) {
+  if (!items.length) return '';
+  return `<div class="tier-group"><h3><span class="dot ${tier}"></span>${esc(label)} <span class="blurb">· ${esc(blurb)}</span></h3>` +
+    items.map((f) => card(f, tier, dispositions[f.id])).join('') + `</div>`;
+}
+
+function card(f, tier, disp) {
+  const stat = f.passed === true ? '✓' : f.passed === false ? '✗' : '•';
+  const statColor = f.passed === true ? 'var(--green)' : f.passed === false ? 'var(--red)' : 'var(--muted)';
+  const confPct = f.detectionConfidence == null ? null : Math.round(f.detectionConfidence * 100);
+  const confColor = f.detectionConfidence == null ? '#bbb' : f.detectionConfidence >= 0.9 ? 'var(--green)' : f.detectionConfidence >= 0.55 ? 'var(--amber)' : 'var(--red)';
+  const judgmental = f.resolution === 'judgment' || f.resolution === 'expertise';
+
+  const chips = [
+    `<span class="chip cat-${f.category}">${f.category === 'control' ? 'Process audit' : f.category === 'engine' ? 'Engine' : 'Content'}</span>`,
+    `<span class="chip ${judgmental ? 'judgment' : ''}">${esc(f.resolutionLabel)}</span>`,
+  ];
+  if (f.severity === 'high' || f.severity === 'medium') chips.push(`<span class="chip sev-${f.severity}">${f.severity}</span>`);
+  if (f.autoEscalate) chips.push(`<span class="chip judgment">auto-escalated</span>`);
+
+  const conf = confPct == null ? '' : `<div class="conf"><span class="label">Detection</span><span class="bar"><i style="width:${confPct}%;background:${confColor}"></i></span><span class="pct">${confPct}%</span></div>`;
+  const why = tier === 'escalate' && f.escalateReason ? `<div class="detail why"><em>Why a person: ${esc(f.escalateReason)}</em></div>` : '';
+  const evidence = f.evidence && f.evidence.length ? `<details class="evidence"><summary>Evidence</summary><ul>${f.evidence.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></details>` : '';
+
+  // Actionable iff it's an open exception or a second-opinion item.
+  const actionable = f.passed === false || f.tier === 'escalate';
+  let action = '';
+  if (disp) {
+    action = `<div class="disp disp-${disp.action}">
+      <span class="disp-tag">${disp.action === 'resolve' ? 'Resolved' : disp.action === 'accept' ? 'Accepted' : 'Dismissed'}</span>
+      <span class="disp-meta">by ${esc(disp.by)} · ${fmtTime(disp.at)}</span>
+      ${disp.note ? `<div class="disp-note">"${esc(disp.note)}"</div>` : ''}
+      <button class="link-btn" data-reopen="${esc(f.id)}">change</button>
+    </div>`;
+  } else if (actionable) {
+    action = `<div class="actions" data-fid="${esc(f.id)}">
+      <button class="act resolve" data-act="resolve">Mark resolved</button>
+      <button class="act accept" data-act="accept">Accept</button>
+      <button class="act dismiss" data-act="dismiss">Dismiss…</button>
+    </div>`;
+  }
+
+  return `<div class="card ${f.passed === true ? 'pass' : ''} ${disp ? 'dispositioned' : ''}">
+    <div class="row1"><span class="stat" style="color:${statColor}">${stat}</span><span class="title">${esc(f.title)}</span></div>
+    <div class="detail">${esc(f.detail)}</div>${why}
+    <div class="chips">${chips.join('')}</div>${conf}${evidence}${action}
+  </div>`;
+}
+
+function wireFindingActions(reportId) {
+  $$('.actions').forEach((box) => {
+    const fid = box.dataset.fid;
+    $$('.act', box).forEach((btn) => {
+      btn.onclick = async () => {
+        const action = btn.dataset.act;
+        let note = '';
+        if (action === 'dismiss') {
+          note = prompt('Dismiss this finding — note why it is not an issue (required):', '');
+          if (!note) return;
+        } else if (action === 'accept') {
+          note = prompt('Accept this finding — optional note (e.g. "will correct in next period"):', '') || '';
+        }
+        try {
+          await api('/api/disposition', { method: 'POST', body: { reportId, findingId: fid, action, note } });
+          const id = location.hash.match(/property\/(.+)$/)[1];
+          renderProperty(id);
+        } catch (e) { alert(e.message); }
+      };
+    });
+  });
+  $$('[data-reopen]').forEach((b) => (b.onclick = async () => {
+    try {
+      // re-open = set back to accept with no decision? Simpler: prompt for a new action.
+      const action = prompt('Change disposition to: resolve / accept / dismiss', 'accept');
+      if (!['resolve', 'accept', 'dismiss'].includes(action)) return;
+      let note = '';
+      if (action === 'dismiss') { note = prompt('Note why it is not an issue (required):', '') || ''; if (!note) return; }
+      await api('/api/disposition', { method: 'POST', body: { reportId, findingId: b.dataset.reopen, action, note } });
+      const id = location.hash.match(/property\/(.+)$/)[1];
+      renderProperty(id);
+    } catch (e) { alert(e.message); }
+  }));
+}
+
+function renderSignoffBar(d) {
+  const el = $('#signoffBar');
+  const { report, signoff, blocking } = d;
+  if (signoff) {
+    el.className = 'signoff-bar done';
+    el.innerHTML = `<div><strong>✓ Signed off</strong> by ${esc(signoff.by)} · ${fmtTime(signoff.at)}</div><div class="muted sm">All exceptions and second-opinion items were dispositioned before sign-off.</div>`;
+    return;
+  }
+  const open = blocking ? blocking.open.length : 0;
+  if (open > 0) {
+    el.className = 'signoff-bar pending';
+    el.innerHTML = `<div><strong>${open} item${open === 1 ? '' : 's'}</strong> must be dispositioned before sign-off</div>
+      <button class="run-btn ghost" disabled>Sign off (blocked)</button>`;
+  } else {
+    el.className = 'signoff-bar ready';
+    const can = ROLE === 'Supervisor';
+    el.innerHTML = `<div><strong>Ready to sign.</strong> ${can ? 'You are acting as Supervisor.' : 'Switch role to Supervisor to record sign-off.'}</div>
+      <button class="run-btn" id="signBtn" ${can ? '' : 'disabled'}>Record sign-off</button>`;
+    if (can) $('#signBtn').onclick = async () => {
+      try {
+        await api('/api/signoff', { method: 'POST', body: { reportId: report.id } });
+        renderProperty(d.property.id);
+      } catch (e) {
+        if (e.data && e.data.open) alert('Blocked: ' + e.data.open.map((o) => o.title).join('; '));
+        else alert(e.message);
+      }
+    };
+  }
+}
+
+function renderAuditTrail(events) {
+  if (!events || !events.length) return ($('#auditTrail').innerHTML = '');
+  $('#auditTrail').innerHTML = `<div class="tier-group"><h3>Audit trail <span class="blurb">· every action on this report, who and when</span></h3>
+    <div class="audit-list">${events.slice().reverse().map((a) => `<div class="audit-row"><span class="atype atype-${a.type}">${esc(a.type)}</span><span class="adetail">${esc(a.detail)}</span><span class="ameta">${esc(a.by || '')} · ${fmtTime(a.at)}</span></div>`).join('')}</div></div>`;
+}
+
+// ── AI briefing ────────────────────────────────────────
+async function loadBriefing(propertyId) {
+  const el = $('#briefing');
+  el.classList.remove('hidden');
+  el.innerHTML = `<h4>Reviewer briefing <span class="src">generating…</span></h4>`;
+  try {
+    const b = await api('/api/briefing', { method: 'POST', body: { propertyId } });
+    const src = b.source === 'claude' ? `Claude · ${b.model}` : 'rules-based';
+    el.innerHTML = `<h4>Reviewer briefing <span class="src">${esc(src)}</span></h4><pre>${esc(b.text)}</pre>` + (b.warning ? `<div class="warn">${esc(b.warning)}</div>` : '');
+  } catch (e) {
+    el.innerHTML = `<h4>Reviewer briefing</h4><pre>${esc(e.message)}</pre>`;
+  }
+}
+
+// ── Calibration ────────────────────────────────────────
+async function renderCalibration() {
+  const c = await api('/api/calibration');
+  const rate = c.overall.usefulRate == null ? '—' : Math.round(c.overall.usefulRate * 100) + '%';
+  const rows = c.byRule
+    .map((r) => `<tr><td><code>${esc(r.rule)}</code></td><td>${r.resolved || 0}</td><td>${r.accept || 0}</td><td>${r.dismiss || 0}</td><td><b>${r.total}</b></td>
+      <td><div class="bar wide"><i style="width:${r.total ? Math.round(((r.resolved + (r.accept || 0)) / r.total) * 100) : 0}%"></i></div></td></tr>`)
+    .join('');
+  $('#view').innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><div class="n">${c.overall.totalActed}</div><div class="l">Findings acted on</div></div>
+      <div class="kpi good"><div class="n">${c.overall.useful}</div><div class="l">Useful (resolved + accepted)</div></div>
+      <div class="kpi bad"><div class="n">${c.overall.dismissed}</div><div class="l">Dismissed (noise)</div></div>
+      <div class="kpi"><div class="n">${rate}</div><div class="l">Useful rate</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Rule calibration</h2><span class="muted sm">How reviewers actually acted on each rule — the loop that shows which checks earn their keep.</span></div>
+      ${c.byRule.length ? `<table class="grid"><thead><tr><th>Rule</th><th>Resolved</th><th>Accepted</th><th>Dismissed</th><th>Total</th><th>Useful</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">No dispositions yet. Review a report and act on its findings to populate calibration.</div>`}
+    </div>`;
+}
+
+// ── Audit log (global) ─────────────────────────────────
+async function renderAudit() {
+  const events = await api('/api/audit');
+  const rows = events
+    .map((a) => `<tr><td class="muted sm">${fmtTime(a.at)}</td><td><span class="atype atype-${a.type}">${esc(a.type)}</span></td><td>${esc(a.by || '')} <span class="muted sm">(${esc(a.role || '')})</span></td><td>${esc(a.detail)}</td></tr>`)
+    .join('');
+  $('#view').innerHTML = `<div class="panel"><div class="panel-head"><h2>Audit log</h2><span class="muted sm">Append-only. Every review run, disposition, sign-off, and import.</span></div>
+    ${events.length ? `<table class="grid"><thead><tr><th>When</th><th>Event</th><th>Actor</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">No activity yet.</div>`}</div>`;
+}
+
+// ── Import ─────────────────────────────────────────────
+async function renderImport() {
+  $('#view').innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>Import a draft report</h2><span class="muted sm">A real deployment feeds drafts from the accounting system. Here: upload/paste a CSV, or download the template.</span></div>
+      <div class="import-grid">
+        <div>
+          <label class="field"><span>Upload CSV</span><input type="file" id="csvFile" accept=".csv,text/csv" /></label>
+          <p class="muted sm">or paste below</p>
+          <textarea id="csvText" class="csv-box" placeholder="section,label,amount&#10;meta,property,...&#10;revenue,Base Rent,34874.79"></textarea>
+          <div class="import-actions">
+            <a class="run-btn ghost" href="/api/import/template" download="farbman-report-template.csv">Download template</a>
+            <button class="run-btn" id="importBtn">Import & review</button>
+          </div>
+        </div>
+        <div id="importResult" class="import-result muted">The parsed draft will appear here, then open in the workspace.</div>
+      </div>
+    </div>`;
+
+  $('#csvFile').onchange = async (e) => {
+    const f = e.target.files[0];
+    if (f) $('#csvText').value = await f.text();
+  };
+  $('#importBtn').onclick = async () => {
+    const csv = $('#csvText').value.trim();
+    if (!csv) return alert('Paste or upload a CSV first.');
+    try {
+      const r = await api('/api/import', { method: 'POST', body: { csv } });
+      $('#importResult').classList.remove('muted');
+      $('#importResult').innerHTML = `<div class="ok-box">✓ Imported <strong>${esc(r.report.property)}</strong> (${esc(r.report.period.label)})</div><p class="muted sm">Opening workspace…</p>`;
+      setTimeout(() => (location.hash = '#/property/' + r.property.id), 700);
+    } catch (e) { alert(e.message); }
+  };
+}
+
+// ── utils ──────────────────────────────────────────────
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// ── boot ───────────────────────────────────────────────
+$('#roleSelect').value = ROLE;
+$('#roleSelect').onchange = (e) => {
+  ROLE = e.target.value;
+  localStorage.setItem('farbman_role', ROLE);
+  router(); // re-render so role-gated actions update
+};
+window.addEventListener('hashchange', router);
+router();

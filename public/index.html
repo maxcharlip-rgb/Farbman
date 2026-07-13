@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Farbman Group · AI Workflow Automation Audit</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <span class="eyebrow">Farbman Group · Internal Prototype</span>
+          <h1 id="brandTitle">AI Workflow Automation Audit</h1>
+          <p class="tagline">First-pass report review assistant for every division — flags material
+            items on a draft report before the human reviewer does, and gets out of the way once
+            that review starts.</p>
+        </div>
+        <div class="topbar-right">
+          <nav class="mainnav">
+            <a href="#/" data-nav="portfolio">Portfolio</a>
+            <a href="#/calibration" data-nav="calibration">Calibration</a>
+            <a href="#/audit" data-nav="audit">Audit log</a>
+            <a href="#/import" data-nav="import">Import</a>
+          </nav>
+          <label class="role-switch">
+            <span>Acting as</span>
+            <select id="roleSelect">
+              <option value="Accountant">Property Accountant</option>
+              <option value="Reviewer" selected>Property Manager (Reviewer)</option>
+              <option value="Supervisor">Accounting Supervisor</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="notbar">
+        <strong>Where it sits:</strong> the staff accountant's pre-check before a report goes to the
+        owner rep — financials <em>and</em> the narrative (stale notes, lost revisions, redaction).
+        <strong>What this isn't:</strong> a pass/fail verdict or a replacement for the supervisor's
+        sign-off. It flags; the reviewer decides; every decision is recorded.
+      </div>
+    </header>
+
+    <main id="view" class="view"><!-- views render here --></main>
+
+    <footer class="footer">
+      Prototype · first-pass review across divisions · deterministic content checks + a process /
+      review audit, scored on a two-axis confidence model (detection × resolution). Advisory only —
+      the engine flags; the human dispositions; the supervisor signs off.
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

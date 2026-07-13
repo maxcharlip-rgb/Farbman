@@ -154,6 +154,7 @@ async function renderProperty(id) {
         <div id="briefing" class="briefing hidden"></div>
         <div id="findings"></div>
         <div id="auditTrail"></div>
+        <div id="sendBar"></div>
       </section>
     </div>`;
 
@@ -168,6 +169,63 @@ async function renderProperty(id) {
     renderAuditTrail(d.audit);
     loadBriefing(property.id);
   }
+  renderSendBar(d);
+}
+
+// ── Release to the owner representative (the end of the workflow) ──
+function renderSendBar(d) {
+  const el = $('#sendBar');
+  if (!el) return;
+  const { property, signoff, sent } = d;
+  const rep = d.ownerRep || property.ownerRep;
+  if (!rep) { el.innerHTML = ''; return; }
+
+  const repCard = `<div class="rep-card">
+      <div class="rep-label">Owner representative</div>
+      <div class="rep-name">${esc(rep.name)}${rep.title ? ` <span class="muted sm">· ${esc(rep.title)}</span>` : ''}</div>
+      <div class="muted sm">${esc(rep.org || '')}${rep.email ? ` · ${esc(rep.email)}` : ''}</div>
+    </div>`;
+
+  // The owner rep's own view: they receive the package, they don't release it.
+  if (ROLE === 'Owner Representative') {
+    el.className = 'send-bar ' + (sent ? 'done' : 'blocked');
+    el.innerHTML = repCard + (sent
+      ? `<div class="sent-note"><strong>✓ Delivered to you</strong> — released by ${esc(sent.by)} · ${fmtTime(sent.at)}. This is the reviewed, signed-off package.</div>`
+      : `<div class="sent-note muted">This report hasn't been released to you yet — it appears here once the team signs off and sends it.</div>`);
+    return;
+  }
+
+  if (sent) {
+    el.className = 'send-bar done';
+    el.innerHTML = repCard +
+      `<div class="sent-note"><strong>✓ Sent to ${esc(rep.name)}</strong> (${esc(rep.email)}) — released by ${esc(sent.by)} · ${fmtTime(sent.at)}</div>` +
+      `<button class="run-btn ghost" id="resendBtn">Resend</button>`;
+    $('#resendBtn').onclick = () => doSend(property.id, rep);
+    return;
+  }
+
+  if (!signoff) {
+    el.className = 'send-bar blocked';
+    el.innerHTML = repCard +
+      `<div class="sent-note muted">Sign off the report before releasing it to the owner representative.</div>` +
+      `<button class="run-btn ghost" disabled>Send to owner representative</button>`;
+    return;
+  }
+
+  el.className = 'send-bar ready';
+  el.innerHTML = repCard +
+    `<div class="sent-note">Reviewed and signed off — ready to release.</div>` +
+    `<button class="run-btn" id="sendBtn">Send to owner representative</button>`;
+  $('#sendBtn').onclick = () => doSend(property.id, rep);
+}
+
+async function doSend(propertyId, rep) {
+  const who = rep ? `${rep.name} (${rep.email})` : 'the owner representative';
+  if (!confirm(`Release the reviewed, signed-off report to ${who}?\n\n(Prototype: this records the release in the audit trail — it does not send a real email.)`)) return;
+  try {
+    await api('/api/send-to-owner', { method: 'POST', body: { propertyId } });
+    renderProperty(propertyId);
+  } catch (e) { alert(e.message); }
 }
 
 // ── Multi-month trend (most useful for receivership per asset mgmt) ──
@@ -318,15 +376,17 @@ function card(f, tier, disp) {
   const why = tier === 'escalate' && f.escalateReason ? `<div class="detail why"><em>Why a person: ${esc(f.escalateReason)}</em></div>` : '';
   const evidence = f.evidence && f.evidence.length ? `<details class="evidence"><summary>Evidence</summary><ul>${f.evidence.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></details>` : '';
 
+  // The owner rep receives a read-only package — no disposition controls.
+  const canAct = ROLE !== 'Owner Representative';
   // Actionable iff it's an open exception or a second-opinion item.
-  const actionable = f.passed === false || f.tier === 'escalate';
+  const actionable = canAct && (f.passed === false || f.tier === 'escalate');
   let action = '';
   if (disp) {
     action = `<div class="disp disp-${disp.action}">
       <span class="disp-tag">${disp.action === 'resolve' ? 'Resolved' : disp.action === 'accept' ? 'Accepted' : 'Dismissed'}</span>
       <span class="disp-meta">by ${esc(disp.by)} · ${fmtTime(disp.at)}</span>
       ${disp.note ? `<div class="disp-note">"${esc(disp.note)}"</div>` : ''}
-      <button class="link-btn" data-reopen="${esc(f.id)}">change</button>
+      ${canAct ? `<button class="link-btn" data-reopen="${esc(f.id)}">change</button>` : ''}
     </div>`;
   } else if (actionable) {
     action = `<div class="actions" data-fid="${esc(f.id)}">

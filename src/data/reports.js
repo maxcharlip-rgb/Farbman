@@ -522,24 +522,30 @@ const PROPERTIES = [
     name: 'NAI Farbman as Receiver of 42350 Grand River Avenue — Receivership',
     division: 'Receivership',
     currentReportId: 'grand-river-42350-2026-06',
+    // The owner rep for a receivership is the lender's asset manager (report is
+    // also filed with the court). Addresses use the reserved .example TLD.
+    ownerRep: { name: 'Karen Whitlock', title: 'Asset Manager', org: 'Midwest Capital Partners (Lender)', email: 'kwhitlock@midwestcapital.example' },
   },
   {
     id: 'novi-commons-jv',
     name: 'Novi Commons — Farbman / Greenfield Joint Venture',
     division: 'Joint Venture',
     currentReportId: 'novi-commons-jv-2026-06',
+    ownerRep: { name: 'Greg Toland', title: 'JV Partner Representative', org: 'Greenfield Partners', email: 'gtoland@greenfieldpartners.example' },
   },
   {
     id: 'orchard-lake-3p',
     name: 'Orchard Lake Professional Plaza — 3rd Party Management',
     division: '3rd Party',
     currentReportId: 'orchard-lake-3p-2026-06',
+    ownerRep: { name: 'Susan Alvarez', title: 'Owner Representative', org: 'Orchard Lake Owners LLC', email: 'salvarez@orchardlakeowners.example' },
   },
   {
     id: 'twelve-mile-reo',
     name: '28000 Twelve Mile Road — REO (Lender-Owned)',
     division: 'REO',
     currentReportId: 'twelve-mile-reo-2026-06',
+    ownerRep: { name: 'Dan Kroll', title: 'REO Asset Manager', org: 'First Michigan Bank — REO Dept', email: 'dkroll@firstmichigan.example' },
   },
 ];
 

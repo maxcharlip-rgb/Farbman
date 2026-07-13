@@ -20,7 +20,7 @@ function actor(req) {
   return { role, by };
 }
 function roleName(role) {
-  return { Accountant: 'A. Accountant', Reviewer: 'L. Reviewer', Supervisor: 'D. Okafor (Supervisor)' }[role] || role;
+  return { Accountant: 'A. Accountant', Reviewer: 'L. Reviewer', Supervisor: 'D. Okafor (Supervisor)', 'Owner Representative': 'Owner Representative' }[role] || role;
 }
 
 // ── Portfolio dashboard ────────────────────────────────
@@ -48,6 +48,8 @@ app.get('/api/portfolio', (req, res) => {
       summary: review ? review.summary : null,
       reviewedAt: review ? review.ranAt : null,
       signoff: store.getSignoff(p.currentReportId),
+      sent: store.getSent(p.currentReportId),
+      ownerRep: p.ownerRep || null,
     };
   });
   const divisionCounts = store.load().divisionCounts;
@@ -66,6 +68,8 @@ app.get('/api/property/:id', (req, res) => {
     review,
     dispositions: store.getDispositions(prop.currentReportId),
     signoff: store.getSignoff(prop.currentReportId),
+    sent: store.getSent(prop.currentReportId),
+    ownerRep: prop.ownerRep || null,
     blocking: review ? store.blockingFindings(prop.currentReportId) : null,
     audit: store.getAuditFor(prop.id),
   });
@@ -123,6 +127,21 @@ app.post('/api/signoff', (req, res) => {
   if (result.error === 'blocked')
     return res.status(409).json({ error: 'blocked', message: 'Every open exception and second-opinion item must be dispositioned first.', open: result.open.map((f) => ({ id: f.id, title: f.title, tier: f.tier })) });
   res.json({ signoff: result });
+});
+
+// ── Release the signed-off report to the owner representative ──
+app.post('/api/send-to-owner', (req, res) => {
+  const { propertyId } = req.body || {};
+  const { by, role } = actor(req);
+  if (role === 'Owner Representative')
+    return res.status(403).json({ error: 'The owner representative receives the report. Switch to an internal role to release it.' });
+  const prop = store.getProperty(propertyId);
+  if (!prop) return res.status(404).json({ error: 'property not found' });
+  const result = store.sendToOwnerRep(prop.currentReportId, { by, role, to: prop.ownerRep || null });
+  if (result.error === 'no_review') return res.status(409).json({ error: 'Run and sign off the review before sending.' });
+  if (result.error === 'not_signed_off')
+    return res.status(409).json({ error: 'Sign off the report before releasing it to the owner representative.' });
+  res.json({ sent: result });
 });
 
 // ── Import a draft report ──────────────────────────────

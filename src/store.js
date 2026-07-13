@@ -21,6 +21,7 @@ function freshStore() {
     reviews: {}, // reportId -> latest review run { reviewId, ranAt, ranBy, summary, findings }
     dispositions: {}, // reportId -> findingId -> { action, note, by, role, at }
     signoffs: {}, // reportId -> { by, role, at, snapshot }
+    sends: {}, // reportId -> { by, role, at, to } — released to the owner rep
     audit: [], // append-only [{ at, type, by, role, propertyId, reportId, detail }]
   };
 }
@@ -32,9 +33,14 @@ function load() {
   try {
     if (fs.existsSync(STORE_PATH)) {
       _store = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
+      if (!_store.sends) _store.sends = {}; // backfill for stores written before this field
       // make sure newer seed reports/properties are present without clobbering live data
       for (const [id, r] of Object.entries(REPORTS)) if (!_store.reports[id]) _store.reports[id] = JSON.parse(JSON.stringify(r));
-      for (const p of PROPERTIES) if (!_store.properties.find((x) => x.id === p.id)) _store.properties.push(JSON.parse(JSON.stringify(p)));
+      for (const p of PROPERTIES) {
+        const existing = _store.properties.find((x) => x.id === p.id);
+        if (!existing) _store.properties.push(JSON.parse(JSON.stringify(p)));
+        else if (!existing.ownerRep && p.ownerRep) existing.ownerRep = p.ownerRep; // backfill owner rep
+      }
       return _store;
     }
   } catch (e) {
@@ -75,6 +81,7 @@ const getProperty = (id) => load().properties.find((p) => p.id === id) || null;
 const getReview = (reportId) => load().reviews[reportId] || null;
 const getDispositions = (reportId) => load().dispositions[reportId] || {};
 const getSignoff = (reportId) => load().signoffs[reportId] || null;
+const getSent = (reportId) => load().sends[reportId] || null;
 const getAuditFor = (propertyId) => load().audit.filter((a) => a.propertyId === propertyId);
 
 function saveReview(reportId, review, ranBy, role) {
@@ -126,6 +133,30 @@ function signOff(reportId, { by, role }) {
   save();
   audit({ type: 'signoff', by, role, propertyId: review.property.propertyId, reportId, detail: `Supervisor sign-off recorded` });
   return s.signoffs[reportId];
+}
+
+/**
+ * Release the reviewed, signed-off report to the owner representative. Prototype:
+ * this is a *simulated* send — it records who released it and when, and writes an
+ * audit-trail entry. It does not transmit real email (sample data, .example
+ * addresses). Gated on sign-off: you only release a report the team has cleared.
+ */
+function sendToOwnerRep(reportId, { by, role, to }) {
+  const s = load();
+  const review = s.reviews[reportId];
+  if (!review) return { error: 'no_review' };
+  if (!s.signoffs[reportId]) return { error: 'not_signed_off' };
+  s.sends[reportId] = { by, role, at: new Date().toISOString(), to: to || null };
+  save();
+  audit({
+    type: 'sent_to_owner_rep',
+    by,
+    role,
+    propertyId: review.property.propertyId,
+    reportId,
+    detail: `Released to owner representative${to ? ` — ${to.name} (${to.email})` : ''}`,
+  });
+  return s.sends[reportId];
 }
 
 function upsertReport(report, addedBy, role) {
@@ -189,11 +220,13 @@ module.exports = {
   getReview,
   getDispositions,
   getSignoff,
+  getSent,
   getAuditFor,
   saveReview,
   setDisposition,
   blockingFindings,
   signOff,
+  sendToOwnerRep,
   upsertReport,
   calibration,
   STORE_PATH,

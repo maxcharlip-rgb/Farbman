@@ -8,6 +8,7 @@ const { runReview } = require('./src/engine');
 const { generateBriefing } = require('./src/llm');
 const { parseCsv, CSV_TEMPLATE, parsePropertyList } = require('./src/ingest');
 const { buildReportDocx, contentDisposition } = require('./src/export/word');
+const connector = require('./src/connector');
 
 const app = express();
 app.use(express.json({ limit: '4mb' }));
@@ -209,6 +210,24 @@ app.post('/api/properties/sync', (req, res) => {
   }
 });
 
+// ── Yardi data-source connector (scheduled export → watched folder) ────────
+app.get('/api/connector', (req, res) => res.json(connector.status()));
+app.post('/api/connector/poll', (req, res) => {
+  try {
+    res.json({ result: connector.processInbox(), status: connector.status() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/connector/simulate', (req, res) => {
+  try {
+    const dropped = connector.simulateDrop();
+    res.json({ dropped, status: connector.status() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Multi-month trend (leadership: most useful for receivership properties) ──
 app.get('/api/trend/:propertyId', (req, res) => {
   const prop = store.getProperty(req.params.propertyId);
@@ -253,4 +272,7 @@ app.listen(PORT, () => {
   console.log(`Farbman first-pass review engine on http://localhost:${PORT}`);
   console.log(`Store: ${store.STORE_PATH}`);
   console.log(`LLM briefing: ${process.env.ANTHROPIC_API_KEY ? 'enabled (Claude)' : 'deterministic fallback'}`);
+  connector.startPolling();
+  const c = connector.status();
+  console.log(`Data source: ${c.sourceLabel} — watching ${c.inbox}, polling every ${c.pollSeconds}s`);
 });

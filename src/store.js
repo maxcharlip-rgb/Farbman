@@ -22,6 +22,13 @@ function freshStore() {
     dispositions: {}, // reportId -> findingId -> { action, note, by, role, at }
     signoffs: {}, // reportId -> { by, role, at, snapshot }
     sends: {}, // reportId -> { by, role, at, to } — released to the owner rep
+    connector: { // automated data source (Yardi scheduled export → watched folder)
+      enabled: true,
+      sourceLabel: 'Yardi scheduled export',
+      pollSeconds: 30,
+      lastPoll: null,
+      lastResult: null,
+    },
     audit: [], // append-only [{ at, type, by, role, propertyId, reportId, detail }]
   };
 }
@@ -34,6 +41,7 @@ function load() {
     if (fs.existsSync(STORE_PATH)) {
       _store = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
       if (!_store.sends) _store.sends = {}; // backfill for stores written before this field
+      if (!_store.connector) _store.connector = freshStore().connector; // backfill data-source connector
       // make sure newer seed reports/properties are present without clobbering live data
       for (const [id, r] of Object.entries(REPORTS)) if (!_store.reports[id]) _store.reports[id] = JSON.parse(JSON.stringify(r));
       for (const p of PROPERTIES) {
@@ -88,6 +96,13 @@ const getDispositions = (reportId) => load().dispositions[reportId] || {};
 const getSignoff = (reportId) => load().signoffs[reportId] || null;
 const getSent = (reportId) => load().sends[reportId] || null;
 const getAuditFor = (propertyId) => load().audit.filter((a) => a.propertyId === propertyId);
+const getConnector = () => load().connector;
+function setConnector(patch) {
+  const s = load();
+  s.connector = { ...s.connector, ...patch };
+  save();
+  return s.connector;
+}
 
 function saveReview(reportId, review, ranBy, role) {
   const s = load();
@@ -297,6 +312,8 @@ module.exports = {
   getSignoff,
   getSent,
   getAuditFor,
+  getConnector,
+  setConnector,
   saveReview,
   setDisposition,
   blockingFindings,

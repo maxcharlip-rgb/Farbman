@@ -526,13 +526,20 @@ async function renderAudit() {
 }
 
 // ── Monthly property-code sync ─────────────────────────
+let CONN_TIMER = null;
+let CONN_BUSY = false;
+
 async function renderSync() {
+  const conn = await api('/api/connector').catch(() => null);
   $('#view').innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>Monthly property sync</h2><span class="muted sm">Keep the roster current from the monthly property list — no manual re-entry.</span></div>
-      <p class="divblurb">Paste or upload the month's property list (keyed on <b>property code</b>). The tool reconciles its roster:
-        adds new properties, updates changed names / divisions / owner reps, and flags any code that dropped off the list.
-        In production this list comes straight from the Yardi property export — same reconcile, nobody re-keys properties.</p>
+      <div class="panel-head"><h2>Data source</h2><span class="muted sm">Automatic — the monthly list flows in from Yardi; nobody posts it by hand.</span></div>
+      <div id="connectorCard"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Manual sync <span class="muted sm">· fallback / one-off</span></h2><span class="muted sm">Paste or upload a property list to reconcile the roster by hand.</span></div>
+      <p class="divblurb">Keyed on <b>property code</b>: adds new properties, updates changed names / divisions / owner reps, and flags any code that dropped off the list.
+        This is the same reconcile the automatic Yardi feed runs — here you trigger it by hand.</p>
       <div class="import-grid">
         <div>
           <label class="field"><span>Upload property list (CSV)</span><input type="file" id="listFile" accept=".csv,text/csv" /></label>
@@ -547,6 +554,18 @@ async function renderSync() {
         <div id="syncResult" class="import-result muted">The reconciliation — added, updated, unchanged, deactivated — appears here and is recorded in the audit trail.</div>
       </div>
     </div>`;
+
+  renderConnector(conn);
+
+  // While this page is open, refresh the connector card so an automatic poll
+  // (the 30s timer) visibly updates the "last sync" line without a manual click.
+  if (CONN_TIMER) clearInterval(CONN_TIMER);
+  CONN_TIMER = setInterval(async () => {
+    if (!$('#connectorCard')) { clearInterval(CONN_TIMER); CONN_TIMER = null; return; }
+    if (CONN_BUSY) return;
+    const s = await api('/api/connector').catch(() => null);
+    if (s && !CONN_BUSY && $('#connectorCard')) renderConnector(s);
+  }, 8000);
 
   $('#listFile').onchange = async (e) => {
     const f = e.target.files[0];
@@ -563,6 +582,55 @@ async function renderSync() {
       const r = await api('/api/properties/sync', { method: 'POST', body: { list } });
       renderSyncResult(r);
     } catch (e) { alert(e.message); }
+  };
+}
+
+function renderConnector(s) {
+  const el = $('#connectorCard');
+  if (!el) return;
+  if (!s) { el.innerHTML = '<div class="empty">Data source unavailable.</div>'; return; }
+  const last = s.lastResult;
+  const lastLine = s.lastPoll
+    ? `Checked ${fmtTime(s.lastPoll)}${last && last.files.length ? ' · ' + esc(last.files.map((f) => f.detail || ('error: ' + f.error)).join('; ')) : ' · nothing new'}`
+    : 'Not checked yet';
+  const pending = s.pending.length;
+  el.innerHTML = `
+    <div class="conn-row">
+      <div class="conn-status">
+        <span class="conn-dot ${s.enabled ? 'on' : ''}"></span>
+        <div>
+          <div class="conn-title">Connected — ${esc(s.sourceLabel)}${s.simulated ? ' <span class="sim-tag">simulated</span>' : ''}</div>
+          <div class="muted sm">Watching <code>${esc(s.inbox)}</code> · polls every ${s.pollSeconds}s</div>
+        </div>
+      </div>
+      <div class="conn-actions">
+        <button class="run-btn ghost" id="simBtn">Simulate Yardi export</button>
+        <button class="run-btn" id="pollBtn">Check now</button>
+      </div>
+    </div>
+    <div class="conn-meta">
+      <div class="cm"><span class="cm-label">Waiting in export folder</span><span class="cm-val ${pending ? 'hot' : ''}">${pending} file${pending === 1 ? '' : 's'}</span></div>
+      <div class="cm"><span class="cm-label">Last sync</span><span class="cm-val">${lastLine}</span></div>
+    </div>
+    <p class="muted sm conn-note">${s.simulated
+      ? 'Prototype: this watches a local folder standing in for Yardi. Point it at Farbman’s Yardi SFTP export and the same watcher runs against live Yardi — the monthly list and financial packets sync themselves, no manual entry.'
+      : 'Connected to a mounted export location.'}</p>`;
+
+  $('#simBtn').onclick = async () => {
+    CONN_BUSY = true; $('#simBtn').disabled = true;
+    try {
+      const r = await api('/api/connector/simulate', { method: 'POST', body: {} });
+      renderConnector(r.status);
+    } catch (e) { alert(e.message); }
+    CONN_BUSY = false;
+  };
+  $('#pollBtn').onclick = async () => {
+    CONN_BUSY = true; const b = $('#pollBtn'); b.classList.add('loading'); b.disabled = true;
+    try {
+      const r = await api('/api/connector/poll', { method: 'POST', body: {} });
+      renderConnector(r.status);
+    } catch (e) { alert(e.message); }
+    CONN_BUSY = false;
   };
 }
 

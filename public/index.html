@@ -23,15 +23,27 @@
             <a href="#/audit" data-nav="audit">Audit log</a>
             <a href="#/import" data-nav="import">Import</a>
           </nav>
-          <label class="role-switch">
-            <span>Acting as</span>
-            <select id="roleSelect">
-              <option value="Accountant">Property Accountant</option>
-              <option value="Reviewer" selected>Property Manager (Reviewer)</option>
-              <option value="Supervisor">Accounting Supervisor</option>
-              <option value="Owner Representative">Owner Representative</option>
-            </select>
-          </label>
+        </div>
+      </div>
+      <div class="rolebar">
+        <span class="rolebar-label">Acting as</span>
+        <div class="role-tabs" id="roleTabs" role="tablist" aria-label="Acting as">
+          <button class="rtab" role="tab" data-role="Accountant">
+            <span class="rtab-name">Property Accountant</span>
+            <span class="rtab-sub">Prepares the draft</span>
+          </button>
+          <button class="rtab" role="tab" data-role="Reviewer">
+            <span class="rtab-name">Property Manager</span>
+            <span class="rtab-sub">Reviews &amp; dispositions</span>
+          </button>
+          <button class="rtab" role="tab" data-role="Supervisor">
+            <span class="rtab-name">Accounting Supervisor</span>
+            <span class="rtab-sub">Signs off</span>
+          </button>
+          <button class="rtab" role="tab" data-role="Owner Representative">
+            <span class="rtab-name">Owner Representative</span>
+            <span class="rtab-sub">Receives the report</span>
+          </button>
         </div>
       </div>
       <div class="notbar">

@@ -140,7 +140,10 @@ async function renderProperty(id) {
             <h2 class="rname">${esc(report.property)}</h2>
             <div class="muted sm">Prepared by ${esc(report.preparedBy ? report.preparedBy.name : '—')}${report.reviewedBy ? ' · Reviewed by ' + esc(report.reviewedBy.name) : ''}</div>
           </div>
-          <span class="status ${report.status === 'signed_off' ? 'signed_off' : 'draft'}">${esc((report.status || '').replace(/_/g, ' '))}</span>
+          <div class="report-head-right">
+            <span class="status ${report.status === 'signed_off' ? 'signed_off' : 'draft'}">${esc((report.status || '').replace(/_/g, ' '))}</span>
+            <a class="run-btn ghost export-btn" href="/api/export/${esc(property.id)}" download title="Download this report as a Word document you can edit and send out">⤓ Export Word</a>
+          </div>
         </div>
         <div class="draft-note">Sample data, for prototype demo only.</div>
         <div id="reportView" class="report-view"></div>
@@ -561,12 +564,23 @@ function fmtTime(iso) {
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+// ── role tabs ──────────────────────────────────────────
+function setRoleTabs() {
+  $$('#roleTabs .rtab').forEach((b) => {
+    const on = b.dataset.role === ROLE;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+    b.onclick = () => {
+      if (ROLE === b.dataset.role) return;
+      ROLE = b.dataset.role;
+      localStorage.setItem('farbman_role', ROLE);
+      setRoleTabs();
+      router(); // re-render so role-gated actions update
+    };
+  });
+}
+
 // ── boot ───────────────────────────────────────────────
-$('#roleSelect').value = ROLE;
-$('#roleSelect').onchange = (e) => {
-  ROLE = e.target.value;
-  localStorage.setItem('farbman_role', ROLE);
-  router(); // re-render so role-gated actions update
-};
+setRoleTabs();
 window.addEventListener('hashchange', router);
 router();

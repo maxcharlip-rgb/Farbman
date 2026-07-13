@@ -7,6 +7,7 @@ const { DIVISION_BLURBS } = require('./src/data/reports');
 const { runReview } = require('./src/engine');
 const { generateBriefing } = require('./src/llm');
 const { parseCsv, CSV_TEMPLATE } = require('./src/ingest');
+const { buildReportDocx, contentDisposition } = require('./src/export/word');
 
 const app = express();
 app.use(express.json({ limit: '4mb' }));
@@ -79,6 +80,25 @@ app.get('/api/report/:id', (req, res) => {
   const report = store.getReport(req.params.id);
   if (!report) return res.status(404).json({ error: 'report not found' });
   res.json(report);
+});
+
+// ── Export the report as a Word (.docx) document to send out ──
+app.get('/api/export/:propertyId', async (req, res) => {
+  const prop = store.getProperty(req.params.propertyId);
+  if (!prop) return res.status(404).json({ error: 'property not found' });
+  const report = store.getReport(prop.currentReportId);
+  if (!report) return res.status(404).json({ error: 'report not found' });
+  try {
+    const buf = await buildReportDocx(report, {
+      property: prop,
+      signoff: store.getSignoff(prop.currentReportId),
+    });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', contentDisposition(report));
+    res.send(buf);
+  } catch (e) {
+    res.status(500).json({ error: 'could not build document: ' + e.message });
+  }
 });
 
 // ── Run the first-pass review (persisted) ──────────────

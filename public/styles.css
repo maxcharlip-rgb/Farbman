@@ -26,9 +26,18 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 .mainnav a { color: #c6d2e0; font-size: 13.5px; padding: 6px 11px; border-radius: 7px; }
 .mainnav a:hover { background: rgba(255,255,255,.08); color: #fff; }
 .mainnav a.active { background: rgba(255,255,255,.14); color: #fff; font-weight: 600; }
-.role-switch { display: flex; flex-direction: column; gap: 2px; }
-.role-switch span { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #aebfd2; }
-.role-switch select { font-family: inherit; font-size: 13px; padding: 6px 9px; border-radius: 7px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.95); color: var(--ink); }
+/* role tabs — the four workflow roles as a segmented control */
+.rolebar { max-width: 1180px; margin: 0 auto; padding: 0 28px 15px; display: flex; align-items: stretch; gap: 13px; }
+.rolebar-label { align-self: center; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: #aebfd2; white-space: nowrap; }
+.role-tabs { display: flex; gap: 5px; flex: 1; flex-wrap: wrap; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 11px; padding: 4px; }
+.rtab { flex: 1 1 150px; min-width: 140px; display: flex; flex-direction: column; gap: 1px; text-align: left; cursor: pointer;
+  font-family: inherit; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 7px 13px; color: #c6d2e0; transition: background .15s, color .15s; }
+.rtab:hover { background: rgba(255,255,255,.09); color: #fff; }
+.rtab.active { background: #fff; color: var(--ink); border-color: #c8a45a; box-shadow: 0 1px 3px rgba(0,0,0,.22); }
+.rtab-name { font-size: 13px; font-weight: 600; }
+.rtab-sub { font-size: 10.5px; color: #9fb1c6; }
+.rtab:hover .rtab-sub { color: #d8e2ee; }
+.rtab.active .rtab-sub { color: var(--muted); }
 .notbar { background: #11203a; color: #b9c6d8; font-size: 12.5px; padding: 9px 28px; border-top: 1px solid rgba(255,255,255,.08); }
 .notbar strong { color: #e6d3a3; }
 
@@ -82,6 +91,8 @@ td.go { text-align: right; color: var(--muted); font-size: 16px; }
 /* workspace */
 .workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
 .report-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.report-head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.export-btn { font-size: 12.5px; padding: 6px 12px; white-space: nowrap; text-decoration: none; }
 .rname { font-family: var(--serif); font-size: 18px; margin: 3px 0; }
 .draft-note { font-size: 11.5px; color: var(--muted); font-style: italic; margin: 10px 0; }
 .status { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }

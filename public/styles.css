@@ -11,7 +11,9 @@
   --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 }
 * { box-sizing: border-box; }
-body { margin: 0; font-family: var(--sans); color: var(--ink); background: var(--paper); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+body { margin: 0; font-family: var(--sans); color: var(--ink); background: var(--paper); line-height: 1.5; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+/* wide tables scroll inside their panel instead of pushing the page sideways */
+.tscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 a { color: var(--accent); text-decoration: none; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; }
 
@@ -90,6 +92,7 @@ td.go { text-align: right; color: var(--muted); font-size: 16px; }
 
 /* workspace */
 .workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+.workspace > .panel { min-width: 0; } /* let grid cells shrink so inner tables wrap/scroll instead of widening the page */
 .report-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
 .report-head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .export-btn { font-size: 12.5px; padding: 6px 12px; white-space: nowrap; text-decoration: none; }
@@ -193,6 +196,7 @@ table.fin tr.total td:first-child { color: var(--navy); }
 .atype-signoff { background: var(--green-bg); color: var(--green); }
 .atype-import { background: #ede7f3; color: var(--purple); }
 .atype-sent_to_owner_rep { background: #e7eef6; color: var(--navy); }
+.atype-property_sync { background: #ede7f3; color: var(--purple); }
 .adetail { color: var(--ink-soft); } .ameta { color: var(--muted); font-size: 11px; white-space: nowrap; }
 
 /* send / release to owner representative */
@@ -222,9 +226,40 @@ table.trend td.tspark { padding: 2px 8px; }
 .import-result { border: 1px dashed var(--line-strong); border-radius: 10px; padding: 18px; font-size: 13px; }
 .ok-box { color: var(--green); font-size: 14px; margin-bottom: 6px; }
 
+/* property roster sync */
+.sync-summary { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.sync-group h4 { margin: 0 0 5px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); display: flex; align-items: center; gap: 7px; }
+.sync-dot { width: 9px; height: 9px; border-radius: 50%; }
+.sync-dot.add { background: var(--green); } .sync-dot.upd { background: var(--accent); } .sync-dot.del { background: var(--red); } .sync-dot.same { background: var(--line-strong); }
+.sync-n { font-size: 11px; background: var(--slate-bg); color: var(--ink-soft); border-radius: 999px; padding: 1px 8px; font-weight: 700; }
+.sync-group ul { margin: 0; padding: 0; list-style: none; }
+.sync-group li { font-size: 12.5px; color: var(--ink-soft); padding: 4px 0; border-bottom: 1px solid #f0eee8; }
+.sync-group code, .sync-group li code { background: var(--slate-bg); color: var(--navy); padding: 1px 6px; border-radius: 5px; font-size: 11px; }
+.row-inactive { opacity: .5; }
+.inactive-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; background: #eee; color: #777; padding: 1px 7px; border-radius: 999px; font-weight: 700; margin-left: 4px; }
+
 @media (max-width: 960px) {
   .workspace { grid-template-columns: 1fr; }
   .kpis { grid-template-columns: repeat(3,1fr); }
   .import-grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 600px) { .kpis { grid-template-columns: repeat(2,1fr); } .tier-counts { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 680px) {
+  .topbar-inner, .rolebar, .notbar, .footer { padding-left: 16px; padding-right: 16px; }
+  .view { margin: 16px auto; padding: 0 16px; }
+  .topbar-inner { gap: 12px; }
+  .brand h1 { font-size: 20px; }
+  .brand .tagline { font-size: 12px; }
+  .topbar-right { gap: 12px; }
+  .mainnav { flex-wrap: wrap; }
+  /* role tabs: label on its own line, four tabs as a 2×2 grid */
+  .rolebar { flex-direction: column; align-items: stretch; gap: 8px; padding-top: 2px; }
+  .rolebar-label { align-self: flex-start; }
+  .role-tabs { flex-wrap: wrap; }
+  .rtab { flex: 1 1 44%; min-width: 0; }
+  .panel { padding: 16px; }
+  .kpis { grid-template-columns: repeat(2,1fr); gap: 10px; }
+  .tier-counts { grid-template-columns: repeat(2,1fr); }
+  .panel-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .report-head { flex-wrap: wrap; }
+  .report-head-right { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
+}

@@ -519,6 +519,8 @@ const REPORTS = {
 const PROPERTIES = [
   {
     id: 'grand-river-42350',
+    code: 'GR42350',
+    status: 'active',
     name: 'NAI Farbman as Receiver of 42350 Grand River Avenue — Receivership',
     division: 'Receivership',
     currentReportId: 'grand-river-42350-2026-06',
@@ -528,6 +530,8 @@ const PROPERTIES = [
   },
   {
     id: 'novi-commons-jv',
+    code: 'NOVICJV',
+    status: 'active',
     name: 'Novi Commons — Farbman / Greenfield Joint Venture',
     division: 'Joint Venture',
     currentReportId: 'novi-commons-jv-2026-06',
@@ -535,6 +539,8 @@ const PROPERTIES = [
   },
   {
     id: 'orchard-lake-3p',
+    code: 'ORCHLK3P',
+    status: 'active',
     name: 'Orchard Lake Professional Plaza — 3rd Party Management',
     division: '3rd Party',
     currentReportId: 'orchard-lake-3p-2026-06',
@@ -542,6 +548,8 @@ const PROPERTIES = [
   },
   {
     id: 'twelve-mile-reo',
+    code: 'TWMILREO',
+    status: 'active',
     name: '28000 Twelve Mile Road — REO (Lender-Owned)',
     division: 'REO',
     currentReportId: 'twelve-mile-reo-2026-06',
@@ -564,4 +572,25 @@ function getReport(id) {
   return REPORTS[id] || null;
 }
 
-module.exports = { REPORTS, PROPERTIES, DIVISION_COUNTS, DIVISION_BLURBS, getReport };
+// ── Monthly property-code roster ───────────────────────────────────────────
+// The property list that circulates monthly (in production, straight out of
+// Yardi). The tool reconciles its roster against this so nobody re-keys
+// properties. Match key is the property CODE.
+const PROPERTY_LIST_TEMPLATE = `code,name,division,owner_rep,owner_rep_email
+GR42350,NAI Farbman as Receiver of 42350 Grand River Avenue — Receivership,Receivership,Karen Whitlock,kwhitlock@midwestcapital.example
+NOVICJV,Novi Commons — Farbman / Greenfield Joint Venture,Joint Venture,Greg Toland,gtoland@greenfieldpartners.example
+`;
+
+// A realistic monthly list: the 4 current properties (unchanged) plus two new
+// ones that were added to the portfolio this month — the tool picks them up
+// automatically, no manual entry.
+const SAMPLE_PROPERTY_LIST = `code,name,division,owner_rep,owner_rep_email
+GR42350,NAI Farbman as Receiver of 42350 Grand River Avenue — Receivership,Receivership,Karen Whitlock,kwhitlock@midwestcapital.example
+NOVICJV,Novi Commons — Farbman / Greenfield Joint Venture,Joint Venture,Greg Toland,gtoland@greenfieldpartners.example
+ORCHLK3P,Orchard Lake Professional Plaza — 3rd Party Management,3rd Party,Susan Alvarez,salvarez@orchardlakeowners.example
+TWMILREO,28000 Twelve Mile Road — REO (Lender-Owned),REO,Dan Kroll,dkroll@firstmichigan.example
+SOUTHFLD3P,Southfield Town Center — 3rd Party Management,3rd Party,Marcus Bell,mbell@southfieldowners.example
+LIVREC001,NAI Farbman as Receiver of 19500 Middlebelt — Receivership,Receivership,Priya Nair,pnair@lakeshorelending.example
+`;
+
+module.exports = { REPORTS, PROPERTIES, DIVISION_COUNTS, DIVISION_BLURBS, getReport, PROPERTY_LIST_TEMPLATE, SAMPLE_PROPERTY_LIST };

@@ -3,10 +3,10 @@
 const path = require('path');
 const express = require('express');
 const store = require('./src/store');
-const { DIVISION_BLURBS } = require('./src/data/reports');
+const { DIVISION_BLURBS, PROPERTY_LIST_TEMPLATE, SAMPLE_PROPERTY_LIST } = require('./src/data/reports');
 const { runReview } = require('./src/engine');
 const { generateBriefing } = require('./src/llm');
-const { parseCsv, CSV_TEMPLATE } = require('./src/ingest');
+const { parseCsv, CSV_TEMPLATE, parsePropertyList } = require('./src/ingest');
 const { buildReportDocx, contentDisposition } = require('./src/export/word');
 
 const app = express();
@@ -41,6 +41,8 @@ app.get('/api/portfolio', (req, res) => {
     const s = statusOf(p.currentReportId);
     return {
       id: p.id,
+      code: p.code || null,
+      rosterStatus: p.status || 'active',
       name: p.name,
       division: p.division,
       currentReportId: p.currentReportId,
@@ -181,6 +183,29 @@ app.post('/api/import', (req, res) => {
     res.json({ property: prop, report });
   } catch (e) {
     res.status(400).json({ error: 'could not parse report: ' + e.message });
+  }
+});
+
+// ── Monthly property-code roster sync ──────────────────────────────────────
+app.get('/api/properties/template', (req, res) => {
+  res.type('text/csv').send(PROPERTY_LIST_TEMPLATE);
+});
+app.get('/api/properties/sample', (req, res) => {
+  res.type('text/csv').send(SAMPLE_PROPERTY_LIST);
+});
+app.post('/api/properties/sync', (req, res) => {
+  const { by, role } = actor(req);
+  try {
+    let list;
+    if (Array.isArray(req.body && req.body.properties)) list = req.body.properties;
+    else if (typeof req.body === 'string') list = parsePropertyList(req.body); // text/csv
+    else if (req.body && typeof req.body.list === 'string') list = parsePropertyList(req.body.list);
+    else return res.status(400).json({ error: 'provide a property list (csv text or a properties array)' });
+    if (!list.length) return res.status(400).json({ error: 'no property rows found in the list' });
+    const result = store.syncProperties(list, { by, role });
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: 'could not sync roster: ' + e.message });
   }
 });
 

@@ -39,8 +39,13 @@ function load() {
       for (const p of PROPERTIES) {
         const existing = _store.properties.find((x) => x.id === p.id);
         if (!existing) _store.properties.push(JSON.parse(JSON.stringify(p)));
-        else if (!existing.ownerRep && p.ownerRep) existing.ownerRep = p.ownerRep; // backfill owner rep
+        else {
+          if (!existing.ownerRep && p.ownerRep) existing.ownerRep = p.ownerRep; // backfill owner rep
+          if (!existing.code && p.code) existing.code = p.code; // backfill roster code
+        }
       }
+      // Every property is roster-active unless explicitly deactivated by a sync.
+      for (const p of _store.properties) if (!p.status) p.status = 'active';
       return _store;
     }
   } catch (e) {
@@ -176,6 +181,76 @@ function upsertReport(report, addedBy, role) {
   return prop;
 }
 
+/**
+ * Reconcile the property roster against the monthly property list (in production,
+ * the Yardi property export). Matches on property CODE. Adds new properties,
+ * updates changed ones, and marks any active property missing from the list as
+ * inactive — non-destructively (data kept; a later list that includes it
+ * reactivates it). This is what keeps the tool current without manual re-entry.
+ */
+function syncProperties(list, { by, role }) {
+  const s = load();
+  const seen = new Set();
+  const added = [];
+  const updated = [];
+  const unchanged = [];
+  const deactivated = [];
+  const key = (v) => String(v || '').trim().toUpperCase();
+
+  for (const item of list) {
+    const code = String(item.code || '').trim();
+    if (!code && !item.name) continue;
+    if (code) seen.add(key(code));
+    let prop = s.properties.find((p) => (code && key(p.code) === key(code)) || (item.id && p.id === item.id));
+    if (!prop) {
+      prop = {
+        id: item.id || key(code).toLowerCase(),
+        code,
+        status: 'active',
+        name: item.name || code,
+        division: item.division || '3rd Party',
+        currentReportId: null,
+        ownerRep: item.ownerRep || null,
+      };
+      s.properties.push(prop);
+      added.push({ code, name: prop.name, division: prop.division });
+    } else {
+      const changes = [];
+      if (code && key(prop.code) !== key(code)) { prop.code = code; changes.push('code'); }
+      if (!prop.code && code) prop.code = code;
+      if (item.name && item.name !== prop.name) { prop.name = item.name; changes.push('name'); }
+      if (item.division && item.division !== prop.division) { prop.division = item.division; changes.push('division'); }
+      if (item.ownerRep && item.ownerRep.name && (!prop.ownerRep || item.ownerRep.name !== prop.ownerRep.name || item.ownerRep.email !== prop.ownerRep.email)) {
+        prop.ownerRep = { ...(prop.ownerRep || {}), name: item.ownerRep.name, email: item.ownerRep.email };
+        changes.push('owner rep');
+      }
+      if (prop.status === 'inactive') { changes.push('reactivated'); }
+      prop.status = 'active';
+      if (changes.length) updated.push({ code: prop.code, name: prop.name, changes });
+      else unchanged.push({ code: prop.code, name: prop.name });
+    }
+  }
+
+  // Anything roster-managed (has a code) and active but absent from this list → inactive.
+  for (const p of s.properties) {
+    if (p.code && p.status !== 'inactive' && !seen.has(key(p.code))) {
+      p.status = 'inactive';
+      deactivated.push({ code: p.code, name: p.name });
+    }
+  }
+
+  save();
+  audit({
+    type: 'property_sync',
+    by,
+    role,
+    propertyId: null,
+    reportId: null,
+    detail: `Property roster synced from monthly list — ${added.length} added, ${updated.length} updated, ${deactivated.length} deactivated (${list.length} in list)`,
+  });
+  return { added, updated, unchanged, deactivated, listCount: list.length, total: s.properties.length };
+}
+
 /** Calibration: how reviewers acted on each rule's findings — the "is this rule earning its keep" loop. */
 function calibration() {
   const s = load();
@@ -228,6 +303,7 @@ module.exports = {
   signOff,
   sendToOwnerRep,
   upsertReport,
+  syncProperties,
   calibration,
   STORE_PATH,
 };

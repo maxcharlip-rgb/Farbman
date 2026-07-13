@@ -24,6 +24,7 @@ const routes = [
   [/^#\/property\/(.+)$/, renderProperty],
   [/^#\/calibration$/, renderCalibration],
   [/^#\/audit$/, renderAudit],
+  [/^#\/sync$/, renderSync],
   [/^#\/import$/, renderImport],
 ];
 
@@ -80,8 +81,10 @@ async function renderPortfolio() {
           chipN(sum.counts.escalate, 'esc', '2nd') +
           `</div>`
         : `<span class="muted">—</span>`;
-      return `<tr data-href="#/property/${esc(p.id)}">
-        <td><div class="pname">${esc(p.name)}</div><div class="muted sm">${esc(p.period ? p.period.label : '')}</div></td>
+      const inactive = p.rosterStatus === 'inactive';
+      const sub = `${p.code ? esc(p.code) + ' · ' : ''}${p.period ? esc(p.period.label) : 'Awaiting first report'}`;
+      return `<tr data-href="#/property/${esc(p.id)}" class="${inactive ? 'row-inactive' : ''}">
+        <td><div class="pname">${esc(p.name)}${inactive ? ' <span class="inactive-tag">inactive</span>' : ''}</div><div class="muted sm">${sub}</div></td>
         <td><span class="divtag">${esc(p.division)}</span></td>
         <td>${badge}</td>
         <td>${counts}</td>
@@ -108,10 +111,10 @@ async function renderPortfolio() {
       </div>
       ${PORTFOLIO_FILTER !== 'All' && data.divisionBlurbs && data.divisionBlurbs[PORTFOLIO_FILTER]
         ? `<p class="divblurb">${esc(data.divisionBlurbs[PORTFOLIO_FILTER])}</p>` : ''}
-      <table class="grid">
+      <div class="tscroll"><table class="grid">
         <thead><tr><th>Property</th><th>Division</th><th>Status</th><th>First-pass result</th><th></th></tr></thead>
         <tbody>${rows || `<tr><td colspan="5" class="empty">No properties in this division.</td></tr>`}</tbody>
-      </table>
+      </table></div>
     </div>`;
 
   $$('.dpill').forEach((b) => (b.onclick = () => { PORTFOLIO_FILTER = b.dataset.div; renderPortfolio(); }));
@@ -261,7 +264,7 @@ function renderTrend(t) {
   el.innerHTML = `
     <h3>Trend — last ${P.length} periods</h3>
     <p class="muted sm">Reporting is cumulative: a prior-month error propagates until caught. The trend is where it surfaces.</p>
-    <table class="fin trend">
+    <div class="tscroll"><table class="fin trend">
       <thead><tr><th></th><th></th>${P.map((p) => `<th class="amt">${monthLabel(p.month)}</th>`).join('')}</tr></thead>
       <tbody>
         ${metric('NOI (period)', 'noi', kfmt)}
@@ -271,7 +274,7 @@ function renderTrend(t) {
         ${metric('Ending cash', 'endingCash', kfmt)}
         ${metric('Occupancy', 'occupancyPct', (v) => (v == null ? '—' : v + '%'))}
       </tbody>
-    </table>`;
+    </table></div>`;
 }
 
 function renderReport(r) {
@@ -508,7 +511,7 @@ async function renderCalibration() {
     </div>
     <div class="panel">
       <div class="panel-head"><h2>Rule calibration</h2><span class="muted sm">How reviewers actually acted on each rule — the loop that shows which checks earn their keep.</span></div>
-      ${c.byRule.length ? `<table class="grid"><thead><tr><th>Rule</th><th>Resolved</th><th>Accepted</th><th>Dismissed</th><th>Total</th><th>Useful</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">No dispositions yet. Review a report and act on its findings to populate calibration.</div>`}
+      ${c.byRule.length ? `<div class="tscroll"><table class="grid"><thead><tr><th>Rule</th><th>Resolved</th><th>Accepted</th><th>Dismissed</th><th>Total</th><th>Useful</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty">No dispositions yet. Review a report and act on its findings to populate calibration.</div>`}
     </div>`;
 }
 
@@ -519,7 +522,67 @@ async function renderAudit() {
     .map((a) => `<tr><td class="muted sm">${fmtTime(a.at)}</td><td><span class="atype atype-${a.type}">${esc(a.type)}</span></td><td>${esc(a.by || '')} <span class="muted sm">(${esc(a.role || '')})</span></td><td>${esc(a.detail)}</td></tr>`)
     .join('');
   $('#view').innerHTML = `<div class="panel"><div class="panel-head"><h2>Audit log</h2><span class="muted sm">Append-only. Every review run, disposition, sign-off, and import.</span></div>
-    ${events.length ? `<table class="grid"><thead><tr><th>When</th><th>Event</th><th>Actor</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">No activity yet.</div>`}</div>`;
+    ${events.length ? `<div class="tscroll"><table class="grid"><thead><tr><th>When</th><th>Event</th><th>Actor</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty">No activity yet.</div>`}</div>`;
+}
+
+// ── Monthly property-code sync ─────────────────────────
+async function renderSync() {
+  $('#view').innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>Monthly property sync</h2><span class="muted sm">Keep the roster current from the monthly property list — no manual re-entry.</span></div>
+      <p class="divblurb">Paste or upload the month's property list (keyed on <b>property code</b>). The tool reconciles its roster:
+        adds new properties, updates changed names / divisions / owner reps, and flags any code that dropped off the list.
+        In production this list comes straight from the Yardi property export — same reconcile, nobody re-keys properties.</p>
+      <div class="import-grid">
+        <div>
+          <label class="field"><span>Upload property list (CSV)</span><input type="file" id="listFile" accept=".csv,text/csv" /></label>
+          <p class="muted sm">or paste below — columns: <code>code, name, division, owner_rep, owner_rep_email</code></p>
+          <textarea id="listText" class="csv-box" placeholder="code,name,division,owner_rep,owner_rep_email&#10;GR42350,42350 Grand River — Receivership,Receivership,Karen Whitlock,kwhitlock@midwestcapital.example"></textarea>
+          <div class="import-actions">
+            <button class="run-btn ghost" id="sampleBtn">Load sample list</button>
+            <a class="run-btn ghost" href="/api/properties/template" download="farbman-property-list-template.csv">Download template</a>
+            <button class="run-btn" id="syncBtn">Sync roster</button>
+          </div>
+        </div>
+        <div id="syncResult" class="import-result muted">The reconciliation — added, updated, unchanged, deactivated — appears here and is recorded in the audit trail.</div>
+      </div>
+    </div>`;
+
+  $('#listFile').onchange = async (e) => {
+    const f = e.target.files[0];
+    if (f) $('#listText').value = await f.text();
+  };
+  $('#sampleBtn').onclick = async () => {
+    const r = await fetch('/api/properties/sample');
+    $('#listText').value = await r.text();
+  };
+  $('#syncBtn').onclick = async () => {
+    const list = $('#listText').value.trim();
+    if (!list) return alert('Paste or upload a property list first (or click "Load sample list").');
+    try {
+      const r = await api('/api/properties/sync', { method: 'POST', body: { list } });
+      renderSyncResult(r);
+    } catch (e) { alert(e.message); }
+  };
+}
+
+function renderSyncResult(r) {
+  const el = $('#syncResult');
+  el.classList.remove('muted');
+  const group = (title, items, cls, render) => {
+    if (!items.length) return '';
+    return `<div class="sync-group"><h4><span class="sync-dot ${cls}"></span>${title} <span class="sync-n">${items.length}</span></h4>` +
+      `<ul>${items.map(render).join('')}</ul></div>`;
+  };
+  el.innerHTML =
+    `<div class="ok-box">✓ Roster synced — ${r.listCount} properties in the list, ${r.total} in the tool now.</div>` +
+    `<div class="sync-summary">` +
+    group('Added', r.added, 'add', (p) => `<li><code>${esc(p.code)}</code> ${esc(p.name)} <span class="muted sm">· ${esc(p.division)}</span></li>`) +
+    group('Updated', r.updated, 'upd', (p) => `<li><code>${esc(p.code)}</code> ${esc(p.name)} <span class="muted sm">· ${esc((p.changes || []).join(', '))}</span></li>`) +
+    group('Deactivated', r.deactivated, 'del', (p) => `<li><code>${esc(p.code)}</code> ${esc(p.name)} <span class="muted sm">· dropped from list</span></li>`) +
+    group('Unchanged', r.unchanged, 'same', (p) => `<li><code>${esc(p.code)}</code> ${esc(p.name)}</li>`) +
+    `</div>` +
+    `<p class="muted sm">Recorded in the <a href="#/audit">audit trail</a>. New properties appear in the <a href="#/">portfolio</a>, awaiting their first report.</p>`;
 }
 
 // ── Import ─────────────────────────────────────────────

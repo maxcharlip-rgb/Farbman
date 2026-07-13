@@ -183,4 +183,59 @@ exec,occupancyPct,54
 exec,narrative,Single tenant; vacant suite being leased; building listed for sale.
 `;
 
-module.exports = { parseCsv, CSV_TEMPLATE };
+// ── Monthly property list parsing (roster sync) ────────────────────────────
+// A wide CSV: code,name,division,owner_rep,owner_rep_email — header row is
+// used to locate columns, so column order is flexible. Handles quoted fields
+// (property names may contain commas).
+function splitCsvRow(line) {
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQ) {
+      if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else cur += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ',') { out.push(cur); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+
+function parsePropertyList(text) {
+  const rows = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!rows.length) return [];
+  const header = splitCsvRow(rows[0]).map((h) => h.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''));
+  const idx = (names) => {
+    for (const n of names) { const i = header.indexOf(n); if (i >= 0) return i; }
+    return -1;
+  };
+  const ci = { code: idx(['code', 'property_code', 'prop_code']), name: idx(['name', 'property', 'property_name']),
+    division: idx(['division', 'div', 'portfolio']), rep: idx(['owner_rep', 'owner_representative', 'rep', 'owner']),
+    email: idx(['owner_rep_email', 'rep_email', 'email', 'owner_email']) };
+  const hasHeader = ci.code >= 0 || ci.name >= 0;
+  const start = hasHeader ? 1 : 0;
+  const out = [];
+  for (let r = start; r < rows.length; r++) {
+    const cols = splitCsvRow(rows[r]);
+    const code = (ci.code >= 0 ? cols[ci.code] : cols[0]) || '';
+    const name = (ci.name >= 0 ? cols[ci.name] : cols[1]) || '';
+    if (!code && !name) continue;
+    const division = (ci.division >= 0 ? cols[ci.division] : cols[2]) || '3rd Party';
+    const repName = ci.rep >= 0 ? cols[ci.rep] : '';
+    const repEmail = ci.email >= 0 ? cols[ci.email] : '';
+    out.push({
+      id: slug(name || code),
+      code: code.trim(),
+      name: name.trim() || code.trim(),
+      division: division.trim() || '3rd Party',
+      ownerRep: repName || repEmail ? { name: repName.trim(), email: repEmail.trim() } : null,
+    });
+  }
+  return out;
+}
+
+module.exports = { parseCsv, CSV_TEMPLATE, parsePropertyList };

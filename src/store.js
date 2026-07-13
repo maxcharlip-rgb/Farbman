@@ -22,8 +22,9 @@ function freshStore() {
     dispositions: {}, // reportId -> findingId -> { action, note, by, role, at }
     signoffs: {}, // reportId -> { by, role, at, snapshot }
     sends: {}, // reportId -> { by, role, at, to } — released to the owner rep
-    connector: { // automated data source (Yardi scheduled export → watched folder)
+    connector: { // automated data source (live CSV URL and/or watched folder)
       enabled: true,
+      sourceUrl: null, // a published CSV / Google Sheet URL — the self-updating source
       sourceLabel: 'Yardi scheduled export',
       pollSeconds: 30,
       lastPoll: null,

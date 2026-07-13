@@ -36,6 +36,7 @@ function statusOf(reportId) {
 }
 
 app.get('/api/portfolio', (req, res) => {
+  connector.maybePoll(); // keep the roster current on idle/free hosts (non-blocking)
   const props = store.getProperties().map((p) => {
     const review = store.getReview(p.currentReportId);
     const report = store.getReport(p.currentReportId);
@@ -210,13 +211,29 @@ app.post('/api/properties/sync', (req, res) => {
   }
 });
 
-// ── Yardi data-source connector (scheduled export → watched folder) ────────
-app.get('/api/connector', (req, res) => res.json(connector.status()));
-app.post('/api/connector/poll', (req, res) => {
+// ── Data-source connector (live CSV URL and/or watched folder) ─────────────
+app.get('/api/connector', (req, res) => {
+  connector.maybePoll(); // opening the page refreshes from the source (non-blocking)
+  res.json(connector.status());
+});
+app.post('/api/connector/poll', async (req, res) => {
   try {
-    res.json({ result: connector.processInbox(), status: connector.status() });
+    const result = await connector.pollOnce();
+    res.json({ result, status: connector.status() });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/connector/config', async (req, res) => {
+  const { sourceUrl, pollSeconds, sourceLabel } = req.body || {};
+  try {
+    connector.setSource({ sourceUrl, pollSeconds, sourceLabel });
+    // Sync immediately so the roster reflects the new source right away.
+    let result = null;
+    if (connector.status().sourceUrl) result = await connector.pollOnce();
+    res.json({ status: connector.status(), result });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 app.post('/api/connector/simulate', (req, res) => {
@@ -274,5 +291,5 @@ app.listen(PORT, () => {
   console.log(`LLM briefing: ${process.env.ANTHROPIC_API_KEY ? 'enabled (Claude)' : 'deterministic fallback'}`);
   connector.startPolling();
   const c = connector.status();
-  console.log(`Data source: ${c.sourceLabel} — watching ${c.inbox}, polling every ${c.pollSeconds}s`);
+  console.log(`Data source: ${c.sourceLabel} — ${c.sourceUrl ? 'polling URL ' + c.sourceUrl : 'watching ' + c.inbox}, every ${c.pollSeconds}s`);
 });

@@ -591,47 +591,91 @@ function renderConnector(s) {
   if (!s) { el.innerHTML = '<div class="empty">Data source unavailable.</div>'; return; }
   const last = s.lastResult;
   const lastLine = s.lastPoll
-    ? `Checked ${fmtTime(s.lastPoll)}${last && last.files.length ? ' · ' + esc(last.files.map((f) => f.detail || ('error: ' + f.error)).join('; ')) : ' · nothing new'}`
+    ? `Checked ${fmtTime(s.lastPoll)}${last && last.files.length ? ' · ' + esc(last.files.map((f) => f.detail || ('error: ' + f.error)).join('; ')) : ' · up to date'}`
     : 'Not checked yet';
-  const pending = s.pending.length;
-  el.innerHTML = `
-    <div class="conn-row">
-      <div class="conn-status">
-        <span class="conn-dot ${s.enabled ? 'on' : ''}"></span>
-        <div>
-          <div class="conn-title">Connected — ${esc(s.sourceLabel)}${s.simulated ? ' <span class="sim-tag">simulated</span>' : ''}</div>
-          <div class="muted sm">Watching <code>${esc(s.inbox)}</code> · polls every ${s.pollSeconds}s</div>
-        </div>
-      </div>
-      <div class="conn-actions">
-        <button class="run-btn ghost" id="simBtn">Simulate Yardi export</button>
-        <button class="run-btn" id="pollBtn">Check now</button>
-      </div>
-    </div>
-    <div class="conn-meta">
-      <div class="cm"><span class="cm-label">Waiting in export folder</span><span class="cm-val ${pending ? 'hot' : ''}">${pending} file${pending === 1 ? '' : 's'}</span></div>
-      <div class="cm"><span class="cm-label">Last sync</span><span class="cm-val">${lastLine}</span></div>
-    </div>
-    <p class="muted sm conn-note">${s.simulated
-      ? 'Prototype: this watches a local folder standing in for Yardi. Point it at Farbman’s Yardi SFTP export and the same watcher runs against live Yardi — the monthly list and financial packets sync themselves, no manual entry.'
-      : 'Connected to a mounted export location.'}</p>`;
+  const live = s.sourceType === 'url';
 
-  $('#simBtn').onclick = async () => {
+  const head = live
+    ? `<div class="conn-status">
+         <span class="conn-dot on"></span>
+         <div>
+           <div class="conn-title">Connected — ${esc(s.sourceLabel)} <span class="live-tag">live</span></div>
+           <div class="muted sm">Reading <a href="${esc(s.sourceUrl)}" target="_blank" rel="noopener">${esc(shortUrl(s.sourceUrl))}</a> · updates itself every ${s.pollSeconds}s</div>
+         </div>
+       </div>
+       <div class="conn-actions">
+         <button class="run-btn ghost" id="pollBtn">Check now</button>
+         <button class="run-btn ghost" id="editSrcBtn">Change source</button>
+       </div>`
+    : `<div class="conn-status">
+         <span class="conn-dot"></span>
+         <div>
+           <div class="conn-title">No live source connected <span class="sim-tag">demo</span></div>
+           <div class="muted sm">Watching <code>${esc(s.inbox)}</code> · polls every ${s.pollSeconds}s</div>
+         </div>
+       </div>
+       <div class="conn-actions">
+         <button class="run-btn ghost" id="simBtn">Simulate Yardi export</button>
+         <button class="run-btn ghost" id="pollBtn">Check now</button>
+       </div>`;
+
+  const pending = s.pending.length;
+  const meta = `<div class="conn-meta">
+      ${live ? '' : `<div class="cm"><span class="cm-label">Waiting in export folder</span><span class="cm-val ${pending ? 'hot' : ''}">${pending} file${pending === 1 ? '' : 's'}</span></div>`}
+      <div class="cm"><span class="cm-label">Last sync</span><span class="cm-val">${lastLine}</span></div>
+    </div>`;
+
+  // Connect / change source form (hidden by default in live mode)
+  const form = `<div class="conn-connect" id="srcForm" ${live ? 'hidden' : ''}>
+      <label class="cm-label">${live ? 'Change the live source' : 'Connect a live source (Google Sheet or CSV URL)'}</label>
+      <div class="src-input-row">
+        <input id="srcUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/e/…/pub?output=csv" value="${live ? esc(s.sourceUrl) : ''}" />
+        <button class="run-btn" id="saveSrcBtn">${live ? 'Update' : 'Connect'}</button>
+        ${live ? '<button class="run-btn ghost" id="disconnectBtn">Disconnect</button>' : ''}
+      </div>
+      <p class="muted sm">Paste a published CSV link. The tool polls it on a schedule — edit the sheet and the roster updates itself, no manual entry.</p>
+    </div>`;
+
+  const note = `<p class="muted sm conn-note">${live
+    ? 'This roster updates itself on a schedule from the source above — no clicks, no re-keying. Point it at Yardi’s export URL once IT enables it and nothing else changes.'
+    : 'Demo mode: “Simulate” drops a sample file into a watched folder. To make it update on its own, connect a live source below (a Google Sheet published as CSV works today; Yardi’s SFTP export later).'}</p>`;
+
+  el.innerHTML = `<div class="conn-row">${head}</div>${meta}${form}${note}`;
+
+  const pollBtn = $('#pollBtn');
+  if (pollBtn) pollBtn.onclick = async () => {
+    CONN_BUSY = true; pollBtn.classList.add('loading'); pollBtn.disabled = true;
+    try { const r = await api('/api/connector/poll', { method: 'POST', body: {} }); renderConnector(r.status); }
+    catch (e) { alert(e.message); }
+    CONN_BUSY = false;
+  };
+  if ($('#simBtn')) $('#simBtn').onclick = async () => {
     CONN_BUSY = true; $('#simBtn').disabled = true;
-    try {
-      const r = await api('/api/connector/simulate', { method: 'POST', body: {} });
-      renderConnector(r.status);
-    } catch (e) { alert(e.message); }
+    try { const r = await api('/api/connector/simulate', { method: 'POST', body: {} }); renderConnector(r.status); }
+    catch (e) { alert(e.message); }
     CONN_BUSY = false;
   };
-  $('#pollBtn').onclick = async () => {
-    CONN_BUSY = true; const b = $('#pollBtn'); b.classList.add('loading'); b.disabled = true;
-    try {
-      const r = await api('/api/connector/poll', { method: 'POST', body: {} });
-      renderConnector(r.status);
-    } catch (e) { alert(e.message); }
-    CONN_BUSY = false;
-  };
+  if ($('#editSrcBtn')) $('#editSrcBtn').onclick = () => { const f = $('#srcForm'); if (f) f.hidden = !f.hidden; };
+  if ($('#saveSrcBtn')) $('#saveSrcBtn').onclick = () => saveSource($('#srcUrl').value.trim());
+  if ($('#disconnectBtn')) $('#disconnectBtn').onclick = () => { if (confirm('Disconnect the live source and return to demo mode?')) saveSource(''); };
+}
+
+async function saveSource(url) {
+  const btn = $('#saveSrcBtn');
+  CONN_BUSY = true; if (btn) { btn.classList.add('loading'); btn.disabled = true; }
+  try {
+    const r = await api('/api/connector/config', { method: 'POST', body: { sourceUrl: url } });
+    renderConnector(r.status);
+  } catch (e) {
+    alert(e.message);
+    if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
+  }
+  CONN_BUSY = false;
+}
+
+function shortUrl(u) {
+  try { const x = new URL(u); return x.hostname + (x.pathname.length > 24 ? x.pathname.slice(0, 24) + '…' : x.pathname); }
+  catch { return u.length > 48 ? u.slice(0, 48) + '…' : u; }
 }
 
 function renderSyncResult(r) {

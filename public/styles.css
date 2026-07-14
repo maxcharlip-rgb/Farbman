@@ -212,32 +212,23 @@ table.fin tr.total td:first-child { color: var(--navy); }
 .send-bar.done { background: #e7eef6; border-color: #cfdcec; }
 .send-bar .run-btn { flex: 0 0 auto; }
 
-/* handoff bar — the sign-off chain across the top of a report workspace */
-.handoff-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
-  background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 11px 16px; margin-bottom: 16px; }
-.hsteps { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
-.hstep { display: flex; flex-direction: column; padding: 2px 8px; }
-.hstep .hdot { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); margin-bottom: 4px; }
-.hstep .hlabel { font-size: 12px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
-.hstep .hwho { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
-.hstep.done .hdot { background: var(--green); }
-.hstep.done .hlabel { color: var(--ink-soft); }
-.hstep.cur .hdot { background: var(--navy); box-shadow: 0 0 0 3px var(--slate-bg); }
-.hstep.cur .hlabel { color: var(--navy); }
-.harrow { color: var(--line-strong); font-size: 15px; align-self: flex-start; margin-top: 3px; }
-.hyou { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; background: var(--navy); color: #fff; padding: 1px 6px; border-radius: 999px; }
-.haction { flex: 0 0 auto; display: flex; align-items: center; }
-.hhint { font-size: 12px; color: var(--muted); font-style: italic; }
+/* submit bar — publish your private review pass to the team */
+.submit-bar { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 12px 15px; border-radius: 10px; margin: 4px 0 16px; border: 1px solid var(--line); }
+.submit-bar.ready { background: #f4f8fa; border-color: #cfe0ea; }
+.submit-bar.done { background: var(--green-bg); border-color: #cfe6d8; flex-direction: column; align-items: flex-start; gap: 3px; }
+.submit-bar .run-btn { flex: 0 0 auto; }
+.submit-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; background: var(--green-bg); color: var(--green); padding: 1px 7px; border-radius: 999px; }
 
-/* locked — the report is with an earlier signee and hasn't been handed over */
-.state-locked { background: var(--slate-bg); color: var(--ink-soft); }
-.row-locked { opacity: .72; }
-.row-locked .pname { color: var(--ink-soft); }
-.locked-panel { text-align: center; padding: 42px 24px; }
-.locked-panel .rname { margin-top: 12px; }
-.lock-badge { display: inline-block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-  background: var(--slate-bg); color: var(--navy); padding: 5px 14px; border-radius: 999px; }
-.lock-note { max-width: 520px; margin: 14px auto 0; font-size: 13px; color: var(--ink-soft); line-height: 1.55; }
+/* your own disposition (private draft) vs peers' submitted decisions */
+.disp.mine { border-left: 3px solid var(--navy); }
+.peers { margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.peers-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 5px; }
+.peer { font-size: 12px; color: var(--ink-soft); padding: 3px 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.peer .peer-role { font-weight: 600; color: var(--navy); }
+.peer.disp-resolve .disp-tag { color: var(--green); } .peer.disp-accept .disp-tag { color: var(--navy); } .peer.disp-dismiss .disp-tag { color: var(--red); }
+.peer .disp-tag { font-weight: 700; }
+.peer .peer-note { font-style: italic; color: var(--muted); }
 
 /* trend */
 table.trend { margin-top: 4px; }

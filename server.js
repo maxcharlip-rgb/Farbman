@@ -17,7 +17,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Identity is passed from the UI role switcher (prototype — no real auth). The
 // role rides on the request body (POSTs), a query param, or an x-role header
-// (GETs) so read endpoints can gate what each signee is allowed to see.
+// (GETs) so each signee's reads reflect their own review pass.
 function actor(req) {
   const role = (req.body && req.body.role) || req.query.role || req.get('x-role') || 'Reviewer';
   const by = (req.body && req.body.user) || req.query.user || req.get('x-user') || roleName(role);
@@ -27,23 +27,33 @@ function roleName(role) {
   return { Accountant: 'A. Accountant', Reviewer: 'L. Reviewer', Supervisor: 'D. Okafor (Supervisor)', 'Owner Representative': 'Owner Representative' }[role] || role;
 }
 
+// An unsubmitted disposition is private to its author, so hide other roles'
+// unsubmitted disposition events from the audit trail a viewer sees.
+function visibleAudit(events, role) {
+  return events.filter((a) => !(a.type === 'disposition' && a.role && a.role !== role && a.reportId && !store.isSubmitted(a.reportId, a.role)));
+}
+
 // ── Portfolio dashboard ────────────────────────────────
-function statusOf(reportId) {
+// Status is per-viewer: it reflects the signed-in role's own review pass.
+function statusOf(reportId, role) {
   const review = store.getReview(reportId);
   if (!review) return { state: 'not_run', label: 'Not reviewed' };
+  if (role === 'Owner Representative') {
+    return store.getSent(reportId) ? { state: 'signed_off', label: 'Delivered to you' } : { state: 'in_review', label: 'Not yet released' };
+  }
   if (store.getSignoff(reportId)) return { state: 'signed_off', label: 'Signed off' };
-  const { open } = store.blockingFindings(reportId);
+  const { open } = store.blockingFindings(reportId, role);
   if (open.length) return { state: 'in_review', label: `${open.length} item${open.length === 1 ? '' : 's'} to clear` };
-  return { state: 'ready', label: 'Ready to sign' };
+  return { state: 'ready', label: store.isSubmitted(reportId, role) ? 'Review submitted' : 'Ready to submit' };
 }
 
 app.get('/api/portfolio', (req, res) => {
   connector.maybePoll(); // keep the roster current on idle/free hosts (non-blocking)
   const { role } = actor(req);
   const props = store.getProperties().map((p) => {
+    const review = store.getReview(p.currentReportId);
     const report = store.getReport(p.currentReportId);
-    const stage = p.currentReportId ? store.getStage(p.currentReportId) : 'prep';
-    const base = {
+    return {
       id: p.id,
       code: p.code || null,
       rosterStatus: p.status || 'active',
@@ -51,25 +61,13 @@ app.get('/api/portfolio', (req, res) => {
       division: p.division,
       currentReportId: p.currentReportId,
       period: report ? report.period : null,
-      ownerRep: p.ownerRep || null,
-      stage,
-      stageLabel: store.STAGE_LABEL[stage],
-      holder: store.HOLDER_LABEL[stage],
-    };
-    // A report the viewer's role hasn't received yet: show that it exists and
-    // where it is in the chain, but not the in-progress review work.
-    if (p.currentReportId && !store.canView(p.currentReportId, role)) {
-      return { ...base, locked: true, status: { state: 'locked', label: `${store.HOLDER_LABEL[stage]} · ${store.STAGE_LABEL[stage]}` }, summary: null, reviewedAt: null, signoff: null, sent: null };
-    }
-    const review = store.getReview(p.currentReportId);
-    return {
-      ...base,
-      locked: false,
-      status: statusOf(p.currentReportId),
+      status: statusOf(p.currentReportId, role),
       summary: review ? review.summary : null,
       reviewedAt: review ? review.ranAt : null,
       signoff: store.getSignoff(p.currentReportId),
       sent: store.getSent(p.currentReportId),
+      submitted: p.currentReportId ? store.isSubmitted(p.currentReportId, role) : false,
+      ownerRep: p.ownerRep || null,
     };
   });
   const divisionCounts = store.load().divisionCounts;
@@ -82,42 +80,28 @@ app.get('/api/property/:id', (req, res) => {
   if (!prop) return res.status(404).json({ error: 'property not found' });
   const { role } = actor(req);
   const reportId = prop.currentReportId;
-  const stage = reportId ? store.getStage(reportId) : 'prep';
-  const meta = { stage, stageLabel: store.STAGE_LABEL[stage], holder: store.HOLDER_LABEL[stage] };
-
-  // Locked: the report exists but hasn't been handed to this signee yet.
-  if (reportId && !store.canView(reportId, role)) {
-    return res.json({
-      property: { id: prop.id, name: prop.name, division: prop.division, code: prop.code || null, ownerRep: prop.ownerRep || null },
-      report: null, review: null, dispositions: {}, signoff: null, sent: null, blocking: null, audit: [],
-      ...meta, locked: true,
-    });
-  }
-
   const report = store.getReport(reportId);
   const review = store.getReview(reportId);
   res.json({
     property: prop,
     report,
     review,
-    dispositions: store.getDispositions(reportId),
+    // Your own dispositions (draft or submitted) + only the SUBMITTED passes of
+    // other roles — an unsubmitted pass never appears on another signee's page.
+    dispositions: store.dispositionsView(reportId, role),
     signoff: store.getSignoff(reportId),
     sent: store.getSent(reportId),
     ownerRep: prop.ownerRep || null,
-    blocking: review ? store.blockingFindings(reportId) : null,
-    audit: store.getAuditFor(prop.id),
-    ...meta,
-    locked: false,
-    isHolder: reportId ? store.isHolder(reportId, role) : false,
-    nextHolder: store.HOLDER_LABEL[store.STAGE_ORDER[store.stageIndex(stage) + 1]] || null,
+    blocking: review ? store.blockingFindings(reportId, role) : null,
+    audit: visibleAudit(store.getAuditFor(prop.id), role),
+    role,
+    canDispose: role !== 'Owner Representative',
   });
 });
 
 app.get('/api/report/:id', (req, res) => {
   const report = store.getReport(req.params.id);
   if (!report) return res.status(404).json({ error: 'report not found' });
-  const { role } = actor(req);
-  if (!store.canView(req.params.id, role)) return res.status(403).json({ error: 'This report has not reached you yet.' });
   res.json(report);
 });
 
@@ -125,8 +109,6 @@ app.get('/api/report/:id', (req, res) => {
 app.get('/api/export/:propertyId', async (req, res) => {
   const prop = store.getProperty(req.params.propertyId);
   if (!prop) return res.status(404).json({ error: 'property not found' });
-  const { role } = actor(req);
-  if (!store.canView(prop.currentReportId, role)) return res.status(403).json({ error: 'This report has not been released to you yet.' });
   const report = store.getReport(prop.currentReportId);
   if (!report) return res.status(404).json({ error: 'report not found' });
   try {
@@ -142,7 +124,7 @@ app.get('/api/export/:propertyId', async (req, res) => {
   }
 });
 
-// ── Run the first-pass review (persisted) ──────────────
+// ── Run the first-pass review — every internal role can run it for their pass ──
 app.post('/api/review', (req, res) => {
   const { propertyId } = req.body || {};
   const prop = store.getProperty(propertyId);
@@ -150,9 +132,7 @@ app.post('/api/review', (req, res) => {
   const report = store.getReport(prop.currentReportId);
   if (!report) return res.status(404).json({ error: 'report not found' });
   const { by, role } = actor(req);
-  const stage = store.getStage(prop.currentReportId);
-  if (!store.isHolder(prop.currentReportId, role) || !['prep', 'review'].includes(stage))
-    return res.status(403).json({ error: `The first-pass review is run by the ${store.HOLDER_LABEL[stage]} while the report is with them.` });
+  if (role === 'Owner Representative') return res.status(403).json({ error: 'The owner representative receives the report — switch to an internal role to run the review.' });
   const prior = report.priorReportId ? store.getReport(report.priorReportId) : null;
   const review = runReview(report, prior);
   const saved = store.saveReview(report.id, review, by, role);
@@ -170,30 +150,37 @@ app.post('/api/review/inline', (req, res) => {
   }
 });
 
-// ── Disposition a finding ──────────────────────────────
+// ── Disposition a finding (into your own private pass) ─────────────────────
 app.post('/api/disposition', (req, res) => {
   const { reportId, findingId, action, note } = req.body || {};
   if (!reportId || !findingId || !action) return res.status(400).json({ error: 'reportId, findingId, action required' });
   if (!['accept', 'dismiss', 'resolve'].includes(action)) return res.status(400).json({ error: 'invalid action' });
   if (action === 'dismiss' && !note) return res.status(400).json({ error: 'a note is required to dismiss a finding' });
   const { by, role } = actor(req);
-  const stage = store.getStage(reportId);
-  if (stage !== 'review' || role !== 'Reviewer')
-    return res.status(403).json({ error: `Findings are dispositioned by the Property Manager while the report is in review (it is currently ${store.STAGE_LABEL[stage].toLowerCase()}).` });
+  if (role === 'Owner Representative') return res.status(403).json({ error: 'The owner representative receives a read-only package and does not disposition findings.' });
   const d = store.setDisposition(reportId, findingId, { action, note, by, role });
-  res.json({ disposition: d, blocking: store.blockingFindings(reportId) });
+  res.json({ disposition: d, blocking: store.blockingFindings(reportId, role) });
 });
 
-// ── Supervisor sign-off (gated) ────────────────────────
+// ── Submit your review — publish your pass so the team can see it ──
+app.post('/api/submit', (req, res) => {
+  const { reportId } = req.body || {};
+  const { by, role } = actor(req);
+  if (role === 'Owner Representative') return res.status(403).json({ error: 'The owner representative receives the report and has no review to submit.' });
+  const result = store.submitReview(reportId, { by, role });
+  if (result.error === 'no_review') return res.status(409).json({ error: 'Run the first-pass review before submitting.' });
+  res.json({ submission: result });
+});
+
+// ── Supervisor sign-off (gated on the supervisor's own pass) ────────────────
 app.post('/api/signoff', (req, res) => {
   const { reportId } = req.body || {};
   const { by, role } = actor(req);
   if (role !== 'Supervisor') return res.status(403).json({ error: 'Only a Supervisor can sign off. Switch role to Supervisor.' });
-  if (store.getStage(reportId) !== 'signoff') return res.status(409).json({ error: 'This report has not been handed to the supervisor for sign-off yet.' });
   const result = store.signOff(reportId, { by, role });
   if (result.error === 'no_review') return res.status(409).json({ error: 'Run the first-pass review before signing off.' });
   if (result.error === 'blocked')
-    return res.status(409).json({ error: 'blocked', message: 'Every open exception and second-opinion item must be dispositioned first.', open: result.open.map((f) => ({ id: f.id, title: f.title, tier: f.tier })) });
+    return res.status(409).json({ error: 'blocked', message: 'Disposition every open exception and second-opinion item in your review before signing off.', open: result.open.map((f) => ({ id: f.id, title: f.title, tier: f.tier })) });
   res.json({ signoff: result });
 });
 
@@ -210,22 +197,6 @@ app.post('/api/send-to-owner', (req, res) => {
   if (result.error === 'not_signed_off')
     return res.status(409).json({ error: 'Sign off the report before releasing it to the owner representative.' });
   res.json({ sent: result });
-});
-
-// ── Hand the report forward one signee (prep → review → sign-off) ──
-app.post('/api/handoff', (req, res) => {
-  const { propertyId } = req.body || {};
-  const { by, role } = actor(req);
-  const prop = store.getProperty(propertyId);
-  if (!prop) return res.status(404).json({ error: 'property not found' });
-  if (!prop.currentReportId) return res.status(409).json({ error: 'There is no report to hand off yet.' });
-  const result = store.handoff(prop.currentReportId, { by, role });
-  if (result.error === 'not_holder') return res.status(403).json({ error: `Only the ${store.HOLDER_LABEL[result.stage]} can release this report right now.` });
-  if (result.error === 'no_forward') return res.status(409).json({ error: 'Sign off the report, then use “Send to owner representative”.' });
-  if (result.error === 'no_review') return res.status(409).json({ error: 'Run the first-pass review before sending it on for sign-off.' });
-  if (result.error === 'blocked')
-    return res.status(409).json({ error: 'blocked', message: 'Disposition every open exception and second-opinion item before handing off for sign-off.', open: result.open.map((f) => ({ id: f.id, title: f.title, tier: f.tier })) });
-  res.json({ stage: result.stage, holder: store.HOLDER_LABEL[result.stage] });
 });
 
 // ── Import a draft report ──────────────────────────────
@@ -309,8 +280,6 @@ app.post('/api/connector/simulate', (req, res) => {
 app.get('/api/trend/:propertyId', (req, res) => {
   const prop = store.getProperty(req.params.propertyId);
   if (!prop) return res.status(404).json({ error: 'property not found' });
-  const { role } = actor(req);
-  if (!store.canView(prop.currentReportId, role)) return res.status(403).json({ error: 'This report has not reached you yet.' });
   const chain = store.getChain(prop.currentReportId);
   res.json({
     propertyId: prop.id,
@@ -330,12 +299,10 @@ app.get('/api/trend/:propertyId', (req, res) => {
 
 // ── Calibration + audit ────────────────────────────────
 app.get('/api/calibration', (req, res) => res.json(store.calibration()));
-// The audit trail is filtered to reports the viewer's role has reached, so an
-// earlier signee's in-progress activity doesn't surface downstream either.
+// The audit trail hides other roles' still-unsubmitted disposition activity.
 app.get('/api/audit', (req, res) => {
   const { role } = actor(req);
-  const events = store.load().audit.filter((a) => !a.reportId || store.canView(a.reportId, role));
-  res.json(events.slice().reverse());
+  res.json(visibleAudit(store.load().audit, role).slice().reverse());
 });
 
 // ── Reviewer briefing (Claude if key set, else deterministic) ──
@@ -343,8 +310,6 @@ app.post('/api/briefing', async (req, res) => {
   const { propertyId } = req.body || {};
   const prop = store.getProperty(propertyId);
   if (!prop) return res.status(404).json({ error: 'property not found' });
-  const { role } = actor(req);
-  if (!store.canView(prop.currentReportId, role)) return res.status(403).json({ error: 'This report has not reached you yet.' });
   const review = store.getReview(prop.currentReportId);
   if (!review) return res.status(409).json({ error: 'run the review first' });
   try {

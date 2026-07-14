@@ -7,19 +7,10 @@ const { REPORTS, PROPERTIES, DIVISION_COUNTS } = require('./data/reports');
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const STORE_PATH = path.join(DATA_DIR, 'store.json');
 
-// ── Workflow stages: the sign-off chain ────────────────────────────────────
-// A report moves prep → review → signoff → released, one signee at a time.
-// A signee only sees a report's working content (financials, findings,
-// dispositions, sign-off) once it has reached their stage; whatever an earlier
-// signee is still working on stays off the downstream pages until it is handed
-// off. This is the generalization of the owner-rep release gate to every step.
-const STAGE_ORDER = ['prep', 'review', 'signoff', 'released'];
-const STAGE_BY_ROLE = { Accountant: 'prep', Reviewer: 'review', Supervisor: 'signoff', 'Owner Representative': 'released' };
-const ROLE_BY_STAGE = { prep: 'Accountant', review: 'Reviewer', signoff: 'Supervisor', released: 'Owner Representative' };
-const STAGE_LABEL = { prep: 'In preparation', review: 'In review', signoff: 'Awaiting sign-off', released: 'Released' };
-const HOLDER_LABEL = { prep: 'Property Accountant', review: 'Property Manager', signoff: 'Accounting Supervisor', released: 'Owner Representative' };
-const stageIndex = (stage) => { const i = STAGE_ORDER.indexOf(stage); return i < 0 ? 0 : i; };
-const roleStageIndex = (role) => stageIndex(STAGE_BY_ROLE[role] || 'review');
+// The four workflow roles. Each person signs in as their role and does their
+// own AI-assisted review pass; their dispositions stay a private draft until
+// they submit, so one signee's in-progress work never shows on another's page.
+const ROLES = ['Accountant', 'Reviewer', 'Supervisor', 'Owner Representative'];
 
 /**
  * Tiny file-backed store. No external DB so the company can just `npm start`.
@@ -33,10 +24,10 @@ function freshStore() {
     properties: JSON.parse(JSON.stringify(PROPERTIES)),
     divisionCounts: { ...DIVISION_COUNTS },
     reviews: {}, // reportId -> latest review run { reviewId, ranAt, ranBy, summary, findings }
-    dispositions: {}, // reportId -> findingId -> { action, note, by, role, at }
+    dispositions: {}, // reportId -> role -> findingId -> { action, note, by, at } (per-role, private until submitted)
+    submissions: {}, // reportId -> role -> { by, at, count } — this role published its pass to the team
     signoffs: {}, // reportId -> { by, role, at, snapshot }
     sends: {}, // reportId -> { by, role, at, to } — released to the owner rep
-    stages: {}, // reportId -> { stage, at, by, role, history[] } — the sign-off chain position
     connector: { // automated data source (live CSV URL and/or watched folder)
       enabled: true,
       sourceUrl: null, // a published CSV / Google Sheet URL — the self-updating source
@@ -51,14 +42,43 @@ function freshStore() {
 
 let _store = null;
 
+/**
+ * Migrate any legacy flat dispositions (reportId -> findingId -> disp, from the
+ * pre-per-role model) into reportId -> role -> findingId -> disp, and mark those
+ * passes as already submitted so prior decisions stay visible.
+ */
+function migrateDispositions(s) {
+  if (!s.dispositions) { s.dispositions = {}; return; }
+  if (!s.submissions) s.submissions = {};
+  for (const [rid, m] of Object.entries(s.dispositions)) {
+    const vals = Object.values(m || {});
+    const isFlat = vals.some((v) => v && typeof v === 'object' && typeof v.action === 'string');
+    if (!isFlat) continue;
+    const byRole = {};
+    for (const [fid, d] of Object.entries(m)) {
+      const r = d.role || 'Reviewer';
+      (byRole[r] = byRole[r] || {})[fid] = { action: d.action, note: d.note || '', by: d.by, at: d.at };
+    }
+    s.dispositions[rid] = byRole;
+    s.submissions[rid] = s.submissions[rid] || {};
+    for (const r of Object.keys(byRole)) {
+      if (s.submissions[rid][r]) continue;
+      const first = Object.values(byRole[r])[0];
+      s.submissions[rid][r] = { by: first.by, at: first.at || null, count: Object.keys(byRole[r]).length };
+    }
+  }
+}
+
 function load() {
   if (_store) return _store;
   try {
     if (fs.existsSync(STORE_PATH)) {
       _store = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
       if (!_store.sends) _store.sends = {}; // backfill for stores written before this field
-      if (!_store.stages) _store.stages = {}; // backfill workflow stages
+      if (!_store.submissions) _store.submissions = {}; // backfill per-role submissions
       if (!_store.connector) _store.connector = freshStore().connector; // backfill data-source connector
+      delete _store.stages; // the sequential sign-off chain was replaced by per-role draft/submit
+      migrateDispositions(_store);
       // make sure newer seed reports/properties are present without clobbering live data
       for (const [id, r] of Object.entries(REPORTS)) if (!_store.reports[id]) _store.reports[id] = JSON.parse(JSON.stringify(r));
       for (const p of PROPERTIES) {
@@ -71,14 +91,13 @@ function load() {
       }
       // Every property is roster-active unless explicitly deactivated by a sync.
       for (const p of _store.properties) if (!p.status) p.status = 'active';
-      if (ensureStages(_store)) save(); // seed a stage for any report that predates the sign-off chain
+      save(); // persist backfills/migration
       return _store;
     }
   } catch (e) {
     console.warn('store load failed, starting fresh:', e.message);
   }
   _store = freshStore();
-  ensureStages(_store);
   save();
   return _store;
 }
@@ -111,7 +130,6 @@ function getChain(reportId, max = 12) {
 const getProperties = () => load().properties;
 const getProperty = (id) => load().properties.find((p) => p.id === id) || null;
 const getReview = (reportId) => load().reviews[reportId] || null;
-const getDispositions = (reportId) => load().dispositions[reportId] || {};
 const getSignoff = (reportId) => load().signoffs[reportId] || null;
 const getSent = (reportId) => load().sends[reportId] || null;
 const getAuditFor = (propertyId) => load().audit.filter((a) => a.propertyId === propertyId);
@@ -123,78 +141,38 @@ function setConnector(patch) {
   return s.connector;
 }
 
-// ── Workflow stage (sign-off chain) ────────────────────────────────────────
-/** Where a report should sit for a store that predates explicit stages — derive
- *  from whatever lifecycle it already has, falling back to its draft status. */
-function initialStageForReport(s, reportId) {
-  if (s.sends && s.sends[reportId]) return 'released';
-  if (s.signoffs && s.signoffs[reportId]) return 'signoff';
-  if ((s.reviews && s.reviews[reportId]) || (s.dispositions && s.dispositions[reportId] && Object.keys(s.dispositions[reportId]).length)) return 'review';
-  const rep = s.reports[reportId];
-  if (rep && rep.status === 'signed_off') return 'signoff';
-  if (rep && rep.status === 'draft_pending_signoff') return 'review';
-  return 'prep';
-}
-
-/** Make sure every report has a stage record. Returns how many were seeded. */
-function ensureStages(s) {
-  if (!s.stages) s.stages = {};
-  let added = 0;
-  for (const id of Object.keys(s.reports)) {
-    if (!s.stages[id]) { s.stages[id] = { stage: initialStageForReport(s, id), at: null, by: null, role: null, history: [] }; added += 1; }
-  }
-  return added;
-}
-
-const getStage = (reportId) => { const s = load(); ensureStages(s); const r = s.stages[reportId]; return r ? r.stage : 'prep'; };
-const getStageRecord = (reportId) => { const s = load(); ensureStages(s); return s.stages[reportId] || { stage: 'prep', history: [] }; };
-/** Has the report reached this role's stage? (upstream + current can see it) */
-const canView = (reportId, role) => stageIndex(getStage(reportId)) >= roleStageIndex(role);
-/** Is this role the one currently holding the report? (only they may act) */
-const isHolder = (reportId, role) => getStage(reportId) === STAGE_BY_ROLE[role];
-
-function setStage(reportId, stage, { by, role }) {
-  const s = load();
-  ensureStages(s);
-  const rec = s.stages[reportId] || (s.stages[reportId] = { stage: 'prep', history: [] });
-  const from = rec.stage;
-  rec.stage = stage;
-  rec.at = new Date().toISOString();
-  rec.by = by;
-  rec.role = role;
-  rec.history.push({ from, to: stage, by, role, at: rec.at });
-  save();
-  return rec;
-}
+// ── Per-role dispositions + submission ─────────────────────────────────────
+/** One role's own dispositions on a report (their private draft or submitted pass). */
+const roleDispositions = (reportId, role) => (load().dispositions[reportId] || {})[role] || {};
+/** Has this role published (submitted) their pass? */
+const isSubmitted = (reportId, role) => !!(load().submissions[reportId] || {})[role];
+const getSubmission = (reportId, role) => (load().submissions[reportId] || {})[role] || null;
 
 /**
- * Hand a report forward one internal step (prep → review, review → signoff).
- * Only the current holder may release it, and the review must be clean before
- * it reaches the supervisor. (signoff → released is the send-to-owner path.)
+ * What a given viewer is allowed to see on a report: their own dispositions
+ * (draft or submitted) plus every OTHER role's dispositions that have been
+ * submitted. An unsubmitted pass by another role is invisible — that's the
+ * isolation: your in-progress work doesn't show on anyone else's page.
  */
-function handoff(reportId, { by, role }) {
-  const s = load();
-  const stage = getStage(reportId);
-  if (role !== ROLE_BY_STAGE[stage]) return { error: 'not_holder', stage };
-  const nextStage = STAGE_ORDER[stageIndex(stage) + 1];
-  if (!nextStage || stage === 'signoff') return { error: 'no_forward', stage };
-  if (nextStage === 'signoff') {
-    if (!s.reviews[reportId]) return { error: 'no_review' };
-    const { open } = blockingFindings(reportId);
-    if (open.length) return { error: 'blocked', open };
+function dispositionsView(reportId, viewerRole) {
+  const all = load().dispositions[reportId] || {};
+  const subs = load().submissions[reportId] || {};
+  const mine = all[viewerRole] || {};
+  const others = {}; // findingId -> [{ role, action, note, by, at }]
+  for (const [role, fmap] of Object.entries(all)) {
+    if (role === viewerRole || !subs[role]) continue;
+    for (const [fid, d] of Object.entries(fmap)) {
+      (others[fid] = others[fid] || []).push({ role, action: d.action, note: d.note, by: d.by, at: d.at });
+    }
   }
-  setStage(reportId, nextStage, { by, role });
-  const rep = s.reports[reportId];
-  audit({ type: 'handoff', by, role, propertyId: rep ? rep.propertyId : null, reportId, detail: `Handed off — ${HOLDER_LABEL[stage]} → ${HOLDER_LABEL[nextStage]}` });
-  return { stage: nextStage };
+  const submittedRoles = Object.keys(subs).filter((r) => r !== viewerRole).map((r) => ({ role: r, at: subs[r].at, by: subs[r].by }));
+  return { mine, others, submittedByMe: !!subs[viewerRole], submittedByMeAt: subs[viewerRole] ? subs[viewerRole].at : null, submittedRoles };
 }
 
 function saveReview(reportId, review, ranBy, role) {
   const s = load();
   const reviewId = `rv_${Date.now().toString(36)}`;
   s.reviews[reportId] = { reviewId, ranAt: new Date().toISOString(), ranBy, role, summary: review.summary, findings: review.findings, property: review.property };
-  // Re-running invalidates a prior sign-off (the underlying findings may have changed).
-  if (s.signoffs[reportId]) delete s.signoffs[reportId];
   save();
   audit({ type: 'review_run', by: ranBy, role, propertyId: review.property.propertyId, reportId, detail: `Ran first-pass review (${review.summary.problems} open items)` });
   return s.reviews[reportId];
@@ -203,21 +181,34 @@ function saveReview(reportId, review, ranBy, role) {
 function setDisposition(reportId, findingId, { action, note, by, role }) {
   const s = load();
   if (!s.dispositions[reportId]) s.dispositions[reportId] = {};
-  s.dispositions[reportId][findingId] = { action, note: note || '', by, role, at: new Date().toISOString() };
-  // Dispositioning after a sign-off invalidates it.
-  if (s.signoffs[reportId]) delete s.signoffs[reportId];
+  if (!s.dispositions[reportId][role]) s.dispositions[reportId][role] = {};
+  s.dispositions[reportId][role][findingId] = { action, note: note || '', by, at: new Date().toISOString() };
+  // A supervisor changing their OWN pass after signing off invalidates that sign-off.
+  if (role === 'Supervisor' && s.signoffs[reportId]) delete s.signoffs[reportId];
   save();
   const review = s.reviews[reportId];
   const f = review && review.findings.find((x) => x.id === findingId);
   audit({ type: 'disposition', by, role, propertyId: review ? review.property.propertyId : null, reportId, detail: `${action.toUpperCase()} — ${f ? f.title : findingId}${note ? ` · "${note}"` : ''}` });
-  return s.dispositions[reportId][findingId];
+  return s.dispositions[reportId][role][findingId];
 }
 
-/** Findings that must be dispositioned before sign-off: open exceptions + every second-opinion item. */
-function blockingFindings(reportId) {
+/** Publish this role's pass so the rest of the team can see its dispositions. */
+function submitReview(reportId, { by, role }) {
+  const s = load();
+  if (!s.reviews[reportId]) return { error: 'no_review' };
+  if (!s.submissions[reportId]) s.submissions[reportId] = {};
+  const count = Object.keys((s.dispositions[reportId] || {})[role] || {}).length;
+  s.submissions[reportId][role] = { by, at: new Date().toISOString(), count };
+  save();
+  audit({ type: 'review_submitted', by, role, propertyId: s.reviews[reportId].property.propertyId, reportId, detail: `Submitted review — ${count} finding${count === 1 ? '' : 's'} dispositioned, now visible to the team` });
+  return s.submissions[reportId][role];
+}
+
+/** Findings a given role still must disposition (open exceptions + second-opinion items). */
+function blockingFindings(reportId, role) {
   const review = getReview(reportId);
   if (!review) return { error: 'no_review' };
-  const disp = getDispositions(reportId);
+  const disp = roleDispositions(reportId, role);
   const need = review.findings.filter((f) => f.passed === false || f.tier === 'escalate');
   const open = need.filter((f) => !disp[f.id]);
   return { need, open };
@@ -227,9 +218,9 @@ function signOff(reportId, { by, role }) {
   const s = load();
   const review = s.reviews[reportId];
   if (!review) return { error: 'no_review' };
-  const { open } = blockingFindings(reportId);
+  const { open } = blockingFindings(reportId, role); // the supervisor signs off on their OWN pass
   if (open.length) return { error: 'blocked', open };
-  const disp = getDispositions(reportId);
+  const disp = roleDispositions(reportId, role);
   const snapshot = {
     summary: review.summary,
     dispositions: review.findings.map((f) => ({ id: f.id, title: f.title, tier: f.tier, passed: f.passed, disposition: disp[f.id] || null })),
@@ -252,7 +243,7 @@ function sendToOwnerRep(reportId, { by, role, to }) {
   if (!review) return { error: 'no_review' };
   if (!s.signoffs[reportId]) return { error: 'not_signed_off' };
   s.sends[reportId] = { by, role, at: new Date().toISOString(), to: to || null };
-  setStage(reportId, 'released', { by, role }); // final handoff: the owner rep can now see it
+  save();
   audit({
     type: 'sent_to_owner_rep',
     by,
@@ -267,6 +258,14 @@ function sendToOwnerRep(reportId, { by, role, to }) {
 function upsertReport(report, addedBy, role) {
   const s = load();
   s.reports[report.id] = report;
+  // A re-imported draft is a fresh document: clear any prior run's review,
+  // dispositions, submissions, sign-off and release for this id so stale state
+  // can't masquerade as work already done on the new draft.
+  delete s.reviews[report.id];
+  delete s.dispositions[report.id];
+  delete s.submissions[report.id];
+  delete s.signoffs[report.id];
+  delete s.sends[report.id];
   let prop = s.properties.find((p) => p.id === report.propertyId);
   if (!prop) {
     prop = { id: report.propertyId, name: report.property, division: report.division, currentReportId: report.id };
@@ -276,9 +275,6 @@ function upsertReport(report, addedBy, role) {
     prop.name = report.property;
     prop.division = report.division;
   }
-  // A freshly imported draft starts with the property accountant — a review or
-  // sign-off of the prior report does not carry over to the new one.
-  s.stages[report.id] = { stage: 'prep', at: new Date().toISOString(), by: addedBy, role, history: [] };
   save();
   audit({ type: 'import', by: addedBy, role, propertyId: report.propertyId, reportId: report.id, detail: `Imported draft: ${report.property} (${report.period.label})` });
   return prop;
@@ -361,17 +357,19 @@ function calibration() {
   let accepted = 0;
   let dismissed = 0;
   let resolved = 0;
-  for (const [reportId, fmap] of Object.entries(s.dispositions)) {
+  for (const [reportId, byRoleMap] of Object.entries(s.dispositions)) {
     const review = s.reviews[reportId];
-    for (const [findingId, d] of Object.entries(fmap)) {
-      const f = review && review.findings.find((x) => x.id === findingId);
-      const rule = f ? f.rule : findingId.split(':')[0];
-      const row = (byRule[rule] = byRule[rule] || { rule, accepted: 0, dismissed: 0, resolved: 0, total: 0 });
-      row[d.action] = (row[d.action] || 0) + 1;
-      row.total += 1;
-      if (d.action === 'accept') accepted += 1;
-      if (d.action === 'dismiss') dismissed += 1;
-      if (d.action === 'resolve') resolved += 1;
+    for (const fmap of Object.values(byRoleMap)) {
+      for (const [findingId, d] of Object.entries(fmap)) {
+        const f = review && review.findings.find((x) => x.id === findingId);
+        const rule = f ? f.rule : findingId.split(':')[0];
+        const row = (byRule[rule] = byRule[rule] || { rule, accepted: 0, dismissed: 0, resolved: 0, total: 0 });
+        row[d.action] = (row[d.action] || 0) + 1;
+        row.total += 1;
+        if (d.action === 'accept') accepted += 1;
+        if (d.action === 'dismiss') dismissed += 1;
+        if (d.action === 'resolve') resolved += 1;
+      }
     }
   }
   const totalActed = accepted + dismissed + resolved;
@@ -388,6 +386,7 @@ function calibration() {
 }
 
 module.exports = {
+  ROLES,
   load,
   save,
   audit,
@@ -396,25 +395,18 @@ module.exports = {
   getProperties,
   getProperty,
   getReview,
-  getDispositions,
   getSignoff,
   getSent,
   getAuditFor,
   getConnector,
   setConnector,
-  getStage,
-  getStageRecord,
-  canView,
-  isHolder,
-  handoff,
-  STAGE_ORDER,
-  STAGE_LABEL,
-  HOLDER_LABEL,
-  ROLE_BY_STAGE,
-  stageIndex,
-  roleStageIndex,
+  roleDispositions,
+  isSubmitted,
+  getSubmission,
+  dispositionsView,
   saveReview,
   setDisposition,
+  submitReview,
   blockingFindings,
   signOff,
   sendToOwnerRep,

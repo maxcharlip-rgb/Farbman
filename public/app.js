@@ -8,7 +8,9 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': 
 let ROLE = localStorage.getItem('farbman_role') || 'Reviewer';
 
 async function api(path, opts = {}) {
-  const o = { headers: { 'content-type': 'application/json' }, ...opts };
+  // The role rides on a header so GET reads (portfolio, property) are gated by
+  // signee too, not just the POST actions.
+  const o = { ...opts, headers: { 'content-type': 'application/json', 'x-role': ROLE, ...(opts.headers || {}) } };
   if (o.body && typeof o.body === 'object') {
     o.body = JSON.stringify({ ...o.body, role: ROLE });
   }
@@ -57,7 +59,7 @@ async function renderPortfolio() {
 
   const agg = {
     total: props.length,
-    reviewed: props.filter((p) => p.status.state !== 'not_run').length,
+    reviewed: props.filter((p) => p.status.state !== 'not_run' && p.status.state !== 'locked').length,
     ready: props.filter((p) => p.status.state === 'ready').length,
     signed: props.filter((p) => p.status.state === 'signed_off').length,
     secondOpinion: props.reduce((a, p) => a + (p.summary ? p.summary.counts.escalate : 0), 0),
@@ -72,8 +74,12 @@ async function renderPortfolio() {
     .map((p) => {
       const s = p.status;
       const sum = p.summary;
-      const badge = `<span class="state state-${s.state}">${esc(s.label)}</span>`;
-      const counts = sum
+      const badge = s.state === 'locked'
+        ? `<span class="state state-locked">🔒 ${esc(s.label)}</span>`
+        : `<span class="state state-${s.state}">${esc(s.label)}</span>`;
+      const counts = p.locked
+        ? `<span class="muted sm" title="Only visible once it reaches you">— hidden until released</span>`
+        : sum
         ? `<div class="minicounts">` +
           chipN(sum.verified, 'ok', '✓') +
           chipN(sum.exceptions, 'bad', '✗') +
@@ -83,7 +89,7 @@ async function renderPortfolio() {
         : `<span class="muted">—</span>`;
       const inactive = p.rosterStatus === 'inactive';
       const sub = `${p.code ? esc(p.code) + ' · ' : ''}${p.period ? esc(p.period.label) : 'Awaiting first report'}`;
-      return `<tr data-href="#/property/${esc(p.id)}" class="${inactive ? 'row-inactive' : ''}">
+      return `<tr data-href="#/property/${esc(p.id)}" class="${inactive ? 'row-inactive' : ''}${p.locked ? ' row-locked' : ''}">
         <td><div class="pname">${esc(p.name)}${inactive ? ' <span class="inactive-tag">inactive</span>' : ''}</div><div class="muted sm">${sub}</div></td>
         <td><span class="divtag">${esc(p.division)}</span></td>
         <td>${badge}</td>
@@ -130,11 +136,17 @@ async function renderProperty(id) {
     api('/api/property/' + id),
     api('/api/trend/' + id).catch(() => null),
   ]);
+  if (d.locked) return renderLocked(d);
   const { property, report, review, dispositions, signoff, blocking } = d;
   if (!report) return ($('#view').innerHTML = errorBox('Report not found'));
 
+  // Only the current holder may run/disposition; upstream signees see it read-only.
+  const canRun = d.isHolder && (d.stage === 'prep' || d.stage === 'review');
+  const canDispo = d.isHolder && d.stage === 'review';
+
   $('#view').innerHTML = `
     <a class="back" href="#/">← Portfolio</a>
+    <div id="handoffBar"></div>
     <div class="workspace">
       <section class="panel report-panel">
         <div class="report-head">
@@ -145,7 +157,7 @@ async function renderProperty(id) {
           </div>
           <div class="report-head-right">
             <span class="status ${report.status === 'signed_off' ? 'signed_off' : 'draft'}">${esc((report.status || '').replace(/_/g, ' '))}</span>
-            <a class="run-btn ghost export-btn" href="/api/export/${esc(property.id)}" download title="Download this report as a Word document you can edit and send out">⤓ Export Word</a>
+            <a class="run-btn ghost export-btn" href="/api/export/${esc(property.id)}?role=${encodeURIComponent(ROLE)}" download title="Download this report as a Word document you can edit and send out">⤓ Export Word</a>
           </div>
         </div>
         <div class="draft-note">Sample data, for prototype demo only.</div>
@@ -154,7 +166,9 @@ async function renderProperty(id) {
       </section>
 
       <section class="panel findings-panel">
-        ${review ? '' : `<div class="run-cta"><p>This draft hasn't had a first-pass review yet.</p><button id="runBtn" class="run-btn">Run first-pass review</button></div>`}
+        ${review ? '' : canRun
+          ? `<div class="run-cta"><p>This draft hasn't had a first-pass review yet.</p><button id="runBtn" class="run-btn">Run first-pass review</button></div>`
+          : `<div class="run-cta"><p class="muted">No first-pass review yet — the ${esc(d.holder)} runs it before handing the report on.</p></div>`}
         <div id="signoffBar"></div>
         <div id="summary"></div>
         <div id="briefing" class="briefing hidden"></div>
@@ -164,6 +178,7 @@ async function renderProperty(id) {
       </section>
     </div>`;
 
+  renderHandoffBar(d);
   renderReport(report);
   renderTrend(trend);
 
@@ -171,11 +186,78 @@ async function renderProperty(id) {
   if (review) {
     renderSignoffBar(d);
     renderSummary(review.summary);
-    renderFindings(review, dispositions, report.id);
+    renderFindings(review, dispositions, report.id, canDispo);
     renderAuditTrail(d.audit);
     loadBriefing(property.id);
   }
   renderSendBar(d);
+}
+
+// ── Locked view: report is with an earlier signee ──────
+function renderLocked(d) {
+  const p = d.property;
+  $('#view').innerHTML = `
+    <a class="back" href="#/">← Portfolio</a>
+    <div id="handoffBar"></div>
+    <div class="panel locked-panel">
+      <div class="lock-badge">🔒 ${esc(d.stageLabel)}</div>
+      <h2 class="rname">${esc(p.name)}</h2>
+      <div class="muted sm">${esc(p.division)}${p.code ? ' · ' + esc(p.code) : ''}</div>
+      <p class="lock-note">This report is currently with the <strong>${esc(d.holder)}</strong>. Its financials, findings, and sign-off appear here once it's released to you — whatever an earlier signee is still working on stays off your page until they hand it off.</p>
+    </div>`;
+  renderHandoffBar(d);
+}
+
+// ── Handoff bar: the sign-off chain + the current holder's release button ──
+const STAGE_STEPS = [
+  { stage: 'prep', label: 'Preparation', who: 'Property Accountant', role: 'Accountant' },
+  { stage: 'review', label: 'Review', who: 'Property Manager', role: 'Reviewer' },
+  { stage: 'signoff', label: 'Sign-off', who: 'Accounting Supervisor', role: 'Supervisor' },
+  { stage: 'released', label: 'Released', who: 'Owner Representative', role: 'Owner Representative' },
+];
+const stageIx = (stage) => STAGE_STEPS.findIndex((s) => s.stage === stage);
+const roleIx = (role) => STAGE_STEPS.findIndex((s) => s.role === role);
+
+function renderHandoffBar(d) {
+  const el = $('#handoffBar');
+  if (!el) return;
+  const cur = stageIx(d.stage);
+  const myIx = roleIx(ROLE);
+  const dots = STAGE_STEPS.map((s, i) => {
+    const cls = i < cur ? 'done' : i === cur ? 'cur' : '';
+    const you = i === myIx ? ' <span class="hyou">you</span>' : '';
+    return `<div class="hstep ${cls}"><span class="hdot"></span><span class="hlabel">${esc(s.label)}${you}</span><span class="hwho">${esc(s.who)}</span></div>`;
+  }).join('<span class="harrow">›</span>');
+
+  const holderNow = myIx === cur; // this role currently holds the report
+  let action = '';
+  if (holderNow && d.stage === 'prep') {
+    action = `<button class="run-btn" id="handoffBtn">Send to Property Manager for review →</button>`;
+  } else if (holderNow && d.stage === 'review') {
+    const openN = d.blocking ? d.blocking.open.length : 0;
+    if (!d.review) action = `<span class="hhint">Run the first-pass review, then hand it to the supervisor.</span>`;
+    else if (openN > 0) action = `<button class="run-btn ghost" disabled>Send for sign-off · ${openN} to clear</button>`;
+    else action = `<button class="run-btn" id="handoffBtn">Send to Accounting Supervisor for sign-off →</button>`;
+  } else if (myIx > -1 && myIx < cur) {
+    action = `<span class="hhint">You handed this on — it's now with the ${esc(d.holder)}.</span>`;
+  } else if (myIx > -1 && myIx > cur) {
+    action = `<span class="hhint">Waiting for the ${esc(d.holder)} to release it to you.</span>`;
+  }
+
+  el.className = 'handoff-bar';
+  el.innerHTML = `<div class="hsteps">${dots}</div><div class="haction">${action}</div>`;
+  const btn = $('#handoffBtn');
+  if (btn) btn.onclick = () => doHandoff(d.property.id);
+}
+
+async function doHandoff(propertyId) {
+  try {
+    await api('/api/handoff', { method: 'POST', body: { propertyId } });
+    renderProperty(propertyId);
+  } catch (e) {
+    if (e.data && e.data.open) alert('Disposition these before handing off for sign-off:\n\n' + e.data.open.map((o) => '• ' + o.title).join('\n'));
+    else alert(e.message);
+  }
 }
 
 // ── Release to the owner representative (the end of the workflow) ──
@@ -345,26 +427,26 @@ function renderSummary(s) {
 function tc(cls, n, label) { return `<div class="tc ${cls}"><div class="n">${n}</div><div class="l">${label}</div></div>`; }
 
 const SEV_RANK = { high: 0, medium: 1, low: 2, info: 3 };
-function renderFindings(review, dispositions, reportId) {
+function renderFindings(review, dispositions, reportId, canDispo) {
   const groups = { assert: [], flag: [], escalate: [] };
   review.findings.forEach((f) => groups[f.tier].push(f));
   const sorter = (a, b) => (a.passed === false ? 0 : 1) - (b.passed === false ? 0 : 1) || (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9);
   Object.values(groups).forEach((g) => g.sort(sorter));
   const t = review.summary.tiers;
   $('#findings').innerHTML =
-    tierGroup('assert', 'Deterministic — verified or certain', t.assert.blurb, groups.assert, review, dispositions) +
-    tierGroup('flag', 'Flag for reviewer', t.flag.blurb, groups.flag, review, dispositions) +
-    tierGroup('escalate', 'Second opinion required', t.escalate.blurb, groups.escalate, review, dispositions);
-  wireFindingActions(reportId);
+    tierGroup('assert', 'Deterministic — verified or certain', t.assert.blurb, groups.assert, dispositions, canDispo) +
+    tierGroup('flag', 'Flag for reviewer', t.flag.blurb, groups.flag, dispositions, canDispo) +
+    tierGroup('escalate', 'Second opinion required', t.escalate.blurb, groups.escalate, dispositions, canDispo);
+  if (canDispo) wireFindingActions(reportId);
 }
 
-function tierGroup(tier, label, blurb, items, review, dispositions) {
+function tierGroup(tier, label, blurb, items, dispositions, canDispo) {
   if (!items.length) return '';
   return `<div class="tier-group"><h3><span class="dot ${tier}"></span>${esc(label)} <span class="blurb">· ${esc(blurb)}</span></h3>` +
-    items.map((f) => card(f, tier, dispositions[f.id])).join('') + `</div>`;
+    items.map((f) => card(f, tier, dispositions[f.id], canDispo)).join('') + `</div>`;
 }
 
-function card(f, tier, disp) {
+function card(f, tier, disp, canDispo) {
   const stat = f.passed === true ? '✓' : f.passed === false ? '✗' : '•';
   const statColor = f.passed === true ? 'var(--green)' : f.passed === false ? 'var(--red)' : 'var(--muted)';
   const confPct = f.detectionConfidence == null ? null : Math.round(f.detectionConfidence * 100);
@@ -382,17 +464,17 @@ function card(f, tier, disp) {
   const why = tier === 'escalate' && f.escalateReason ? `<div class="detail why"><em>Why a person: ${esc(f.escalateReason)}</em></div>` : '';
   const evidence = f.evidence && f.evidence.length ? `<details class="evidence"><summary>Evidence</summary><ul>${f.evidence.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></details>` : '';
 
-  // The owner rep receives a read-only package — no disposition controls.
-  const canAct = ROLE !== 'Owner Representative';
+  // Only the Property Manager, while the report is in review, may act on
+  // findings. Everyone else (accountant, supervisor, owner rep) sees them read-only.
   // Actionable iff it's an open exception or a second-opinion item.
-  const actionable = canAct && (f.passed === false || f.tier === 'escalate');
+  const actionable = canDispo && (f.passed === false || f.tier === 'escalate');
   let action = '';
   if (disp) {
     action = `<div class="disp disp-${disp.action}">
       <span class="disp-tag">${disp.action === 'resolve' ? 'Resolved' : disp.action === 'accept' ? 'Accepted' : 'Dismissed'}</span>
       <span class="disp-meta">by ${esc(disp.by)} · ${fmtTime(disp.at)}</span>
       ${disp.note ? `<div class="disp-note">"${esc(disp.note)}"</div>` : ''}
-      ${canAct ? `<button class="link-btn" data-reopen="${esc(f.id)}">change</button>` : ''}
+      ${canDispo ? `<button class="link-btn" data-reopen="${esc(f.id)}">change</button>` : ''}
     </div>`;
   } else if (actionable) {
     action = `<div class="actions" data-fid="${esc(f.id)}">

@@ -29,12 +29,22 @@
  */
 
 function parseCsvLine(line) {
-  // minimal CSV: split on commas but keep the remainder of the line for the value
-  const i1 = line.indexOf(',');
-  const i2 = line.indexOf(',', i1 + 1);
-  if (i1 < 0) return [line.trim()];
-  if (i2 < 0) return [line.slice(0, i1).trim(), line.slice(i1 + 1).trim()];
-  return [line.slice(0, i1).trim(), line.slice(i1 + 1, i2).trim(), line.slice(i2 + 1).trim()];
+  // Fast path (no quotes): split on the first two commas, keep the remainder as
+  // the value — preserves commas/spacing inside an unquoted value (e.g. a narrative).
+  if (line.indexOf('"') < 0) {
+    const i1 = line.indexOf(',');
+    if (i1 < 0) return [line.trim()];
+    const i2 = line.indexOf(',', i1 + 1);
+    if (i2 < 0) return [line.slice(0, i1).trim(), line.slice(i1 + 1).trim()];
+    return [line.slice(0, i1).trim(), line.slice(i1 + 1, i2).trim(), line.slice(i2 + 1).trim()];
+  }
+  // Quoted fields present (e.g. a label with a comma: "Reimbursable Income (CAM, Tax)")
+  // — use the same quote-aware splitter the roster parser uses, then rejoin any
+  // trailing columns as the value so a quoted comma in the label no longer truncates the row.
+  const cols = splitCsvRow(line);
+  if (cols.length <= 1) return [cols[0] || ''];
+  if (cols.length === 2) return [cols[0], cols[1]];
+  return [cols[0], cols[1], cols.slice(2).join(',')];
 }
 
 function slug(s) {
@@ -42,8 +52,15 @@ function slug(s) {
 }
 
 function num(v) {
-  const n = Number(String(v).replace(/[$,()]/g, (m) => (m === '(' || m === ')' ? '' : '')).replace(/[$,]/g, ''));
-  return Number.isFinite(n) ? n : 0;
+  const s = String(v == null ? '' : v).trim();
+  if (s === '') return 0; // a blank cell is a legitimate zero
+  const negative = /^\(.*\)$/.test(s); // accounting negative, e.g. (500.00) → -500
+  const cleaned = s.replace(/[$,()\s]/g, '');
+  const n = Number(cleaned);
+  // Non-empty but non-numeric (e.g. "N/A") → NaN so the arithmetic tie-out surfaces
+  // it, instead of silently substituting 0 and "auto-verifying" a wrong total.
+  if (!Number.isFinite(n)) return NaN;
+  return negative ? -Math.abs(n) : n;
 }
 
 function parseCsv(text) {
@@ -90,6 +107,12 @@ function parseCsv(text) {
       default:
         break;
     }
+  }
+
+  // Reject un-parseable input instead of silently minting an "Untitled Property"
+  // junk record: a real report CSV must at least name its property.
+  if (!meta.property) {
+    throw new Error('could not parse a report — the CSV needs a "meta,property,<name>" row (download the template for the expected shape)');
   }
 
   const totalRevenue = revenue.reduce((a, b) => a + b.amount, 0);

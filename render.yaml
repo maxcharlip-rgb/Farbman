@@ -1,0 +1,45 @@
+# Render Blueprint — FREE, no paid resources. Nothing here bills.
+#
+# This matches the current free deployment: a free web service, no disk. Pushing
+# it (or creating a Blueprint from it) will NOT incur any charge.
+#
+# Persistence note: the store (data/store.json — every review, disposition,
+# sign-off, roster sync, audit entry) lives on disk, and Render's FREE filesystem
+# is EPHEMERAL — it resets on every deploy and after ~15 min idle, re-seeding the
+# demo fixtures. That's fine for a demo (warm the site first, don't redeploy
+# mid-session). To make data actually persist you must move to the paid "Starter"
+# plan and attach a disk — the config for that is included BELOW, COMMENTED OUT,
+# so it can never bill unless you deliberately enable it.
+
+services:
+  - type: web
+    name: farbman-review-engine
+    runtime: node
+    plan: free               # free — no charge. (Persistent disks require a paid plan.)
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    # envVars:
+    #   # Point the live roster connector at a published CSV (optional; free):
+    #   - key: YARDI_SOURCE_URL
+    #     value: https://docs.google.com/spreadsheets/d/e/…/pub?output=csv
+    #   # Enable Claude-written reviewer briefings (set the secret value in the dashboard):
+    #   - key: ANTHROPIC_API_KEY
+    #     sync: false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PAID persistence (opt-in) — ONLY uncomment when you intend to pay for it.
+# Switch `plan: free` above to `plan: starter` (~$7/mo), add the two env vars, and
+# add the disk block. This is the only way data survives redeploys/idle on Render.
+#
+#     plan: starter
+#     envVars:
+#       - key: DATA_DIR
+#         value: /var/data
+#       - key: YARDI_INBOX_DIR
+#         value: /var/data/yardi-inbox
+#     disk:
+#       name: farbman-data
+#       mountPath: /var/data
+#       sizeGB: 1
+# ─────────────────────────────────────────────────────────────────────────────

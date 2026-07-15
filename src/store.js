@@ -4,8 +4,11 @@ const fs = require('fs');
 const path = require('path');
 const { REPORTS, PROPERTIES, DIVISION_COUNTS } = require('./data/reports');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const STORE_PATH = path.join(DATA_DIR, 'store.json');
+// Paths are env-overridable so a deploy can point them at a persistent disk
+// (Render free-tier's default filesystem is ephemeral — it resets on every
+// deploy and after idle, which would silently wipe all review data).
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const STORE_PATH = process.env.STORE_PATH || path.join(DATA_DIR, 'store.json');
 
 // The four workflow roles. Each person signs in as their role and does their
 // own AI-assisted review pass; their dispositions stay a private draft until
@@ -95,7 +98,16 @@ function load() {
       return _store;
     }
   } catch (e) {
-    console.warn('store load failed, starting fresh:', e.message);
+    // The store file exists but is unreadable/corrupt. Do NOT silently overwrite
+    // it with fresh fixtures — that would discard recoverable data. Move it aside
+    // loudly so it can be inspected, then start fresh.
+    try {
+      const aside = `${STORE_PATH}.corrupt-${Date.now()}`;
+      if (fs.existsSync(STORE_PATH)) fs.renameSync(STORE_PATH, aside);
+      console.error(`store load FAILED (${e.message}). Moved the unreadable store to ${aside} and started fresh — data was NOT overwritten in place.`);
+    } catch (e2) {
+      console.error(`store load failed (${e.message}) and could not move it aside (${e2.message}); starting fresh.`);
+    }
   }
   _store = freshStore();
   save();
@@ -104,7 +116,13 @@ function load() {
 
 function save() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(STORE_PATH, JSON.stringify(_store, null, 2));
+  // Atomic write: serialize to a temp file, keep a .bak of the last good store,
+  // then rename into place (rename is atomic on the same filesystem) so a crash
+  // mid-write can never leave a half-written, unparseable store.json.
+  const tmp = `${STORE_PATH}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(_store, null, 2));
+  try { if (fs.existsSync(STORE_PATH)) fs.copyFileSync(STORE_PATH, `${STORE_PATH}.bak`); } catch { /* best-effort backup */ }
+  fs.renameSync(tmp, STORE_PATH);
 }
 
 function audit(evt) {
@@ -256,6 +274,14 @@ function sendToOwnerRep(reportId, { by, role, to }) {
 }
 
 function upsertReport(report, addedBy, role) {
+  // Validate the shape BEFORE mutating anything, so a malformed report object
+  // (e.g. posted straight to /api/import) can't half-create a junk property and
+  // then throw, corrupting the store.
+  if (!report || typeof report !== 'object') throw new Error('report must be an object');
+  const missing = ['id', 'propertyId', 'property'].filter((k) => !report[k]);
+  if (!report.period || !report.period.month) missing.push('period.month');
+  if (missing.length) throw new Error(`report is missing required field(s): ${missing.join(', ')}`);
+
   const s = load();
   s.reports[report.id] = report;
   // A re-imported draft is a fresh document: clear any prior run's review,
@@ -331,11 +357,17 @@ function syncProperties(list, { by, role }) {
   }
 
   // Anything roster-managed (has a code) and active but absent from this list → inactive.
-  for (const p of s.properties) {
-    if (p.code && p.status !== 'inactive' && !seen.has(key(p.code))) {
-      p.status = 'inactive';
-      deactivated.push({ code: p.code, name: p.name });
-    }
+  // Safety floor: a truncated/garbage feed (e.g. an HTML error page that slipped
+  // through) would otherwise deactivate the entire real roster. Refuse to
+  // deactivate more than half of the active managed roster in a single sync.
+  const managedActive = s.properties.filter((p) => p.code && p.status !== 'inactive');
+  const wouldDeactivate = managedActive.filter((p) => !seen.has(key(p.code)));
+  if (managedActive.length >= 4 && wouldDeactivate.length > Math.ceil(managedActive.length / 2)) {
+    throw new Error(`refusing to sync: this list would deactivate ${wouldDeactivate.length} of ${managedActive.length} active properties — it looks truncated or wrong, so the roster was left unchanged`);
+  }
+  for (const p of wouldDeactivate) {
+    p.status = 'inactive';
+    deactivated.push({ code: p.code, name: p.name });
   }
 
   save();

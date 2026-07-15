@@ -158,6 +158,9 @@ app.post('/api/disposition', (req, res) => {
   if (action === 'dismiss' && !note) return res.status(400).json({ error: 'a note is required to dismiss a finding' });
   const { by, role } = actor(req);
   if (role === 'Owner Representative') return res.status(403).json({ error: 'The owner representative receives a read-only package and does not disposition findings.' });
+  const review = store.getReview(reportId);
+  if (!review) return res.status(409).json({ error: 'run the first-pass review before dispositioning findings' });
+  if (!review.findings.some((f) => f.id === findingId)) return res.status(400).json({ error: 'unknown findingId for this report' });
   const d = store.setDisposition(reportId, findingId, { action, note, by, role });
   res.json({ disposition: d, blocking: store.blockingFindings(reportId, role) });
 });
@@ -317,6 +320,17 @@ app.post('/api/briefing', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// Terminal error handler — turns a malformed JSON body or any uncaught route
+// throw into the same JSON error shape the SPA expects, instead of an HTML page
+// with a raw stack trace / filesystem paths. Must be last, with four args.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error('Unhandled error:', err.stack || err.message);
+  const msg = err.type === 'entity.parse.failed' ? 'invalid JSON in request body' : (err.message || 'internal error');
+  res.status(status).json({ error: msg });
 });
 
 const PORT = process.env.PORT || 4178;

@@ -11,33 +11,36 @@ const { processRules } = require('./rules/process');
 const { narrativeQualityRules, narrativeContinuityRules } = require('./rules/narrative');
 const { redactionRules } = require('./rules/redaction');
 
+/** Run one rule group; a thrown rule becomes an engine.error finding instead of
+ *  aborting the whole review (so a report missing a section flags, never 500s). */
+function guarded(fn) {
+  try {
+    return fn() || [];
+  } catch (e) {
+    return [{
+      id: 'engine.error',
+      rule: 'engine.error',
+      title: 'A rule failed to run on this report',
+      category: 'engine',
+      resolution: 'judgment',
+      detectionConfidence: 0,
+      autoEscalate: true,
+      severity: 'medium',
+      detail: `Rule error: ${e.message}. The engine flags rather than silently skips — review this section manually.`,
+      evidence: [String(e.stack || e)],
+    }];
+  }
+}
+
 /** Content rules describe the report itself; run on both current and prior periods. */
 function contentRules(report, policy, prior = null) {
   const out = [];
-  const guard = (fn) => {
-    try {
-      out.push(...(fn() || []));
-    } catch (e) {
-      out.push({
-        id: 'engine.error',
-        rule: 'engine.error',
-        title: 'A rule failed to run on this report',
-        category: 'engine',
-        resolution: 'judgment',
-        detectionConfidence: 0,
-        autoEscalate: true,
-        severity: 'medium',
-        detail: `Rule error: ${e.message}. The engine flags rather than silently skips — review this section manually.`,
-        evidence: [String(e.stack || e)],
-      });
-    }
-  };
-  guard(() => arithmeticRules(report, policy));
-  guard(() => bankRecRules(report));
-  guard(() => consistencyRules(report, policy, prior));
-  guard(() => crossrefRules(report));
-  guard(() => narrativeQualityRules(report, policy));
-  guard(() => redactionRules(report, policy));
+  out.push(...guarded(() => arithmeticRules(report, policy)));
+  out.push(...guarded(() => bankRecRules(report)));
+  out.push(...guarded(() => consistencyRules(report, policy, prior)));
+  out.push(...guarded(() => crossrefRules(report)));
+  out.push(...guarded(() => narrativeQualityRules(report, policy)));
+  out.push(...guarded(() => redactionRules(report, policy)));
   return out;
 }
 
@@ -56,9 +59,9 @@ function runReview(report, prior, policyOverrides = {}) {
   let mom = [];
   if (prior) {
     const priorContent = contentRules(prior, policy);
-    mom = monthOverMonthRules(report, prior, currentContent, priorContent, policy);
+    mom = guarded(() => monthOverMonthRules(report, prior, currentContent, priorContent, policy));
     // Narrative continuity — stale carry-overs and reverted (lost-revision) notes.
-    mom.push(...narrativeContinuityRules(report, prior, policy));
+    mom.push(...guarded(() => narrativeContinuityRules(report, prior, policy)));
   } else {
     mom = [
       {
@@ -81,7 +84,7 @@ function runReview(report, prior, policyOverrides = {}) {
     ];
   }
 
-  const proc = processRules(report, policy, { hasOpenProblems });
+  const proc = guarded(() => processRules(report, policy, { hasOpenProblems }));
 
   const raw = [...currentContent, ...mom, ...proc];
   const findings = raw.map((f) => enrich(f, policy));

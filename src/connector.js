@@ -78,6 +78,14 @@ function fetchUrl(url, redirects = 0) {
 
 // Ingest one CSV blob (property list or report), appending a result entry.
 function ingestText(text, source, actor, handled) {
+  // Guard: a mistyped URL or an expired share link returns an HTML sign-in / error
+  // page with a 200. Without this it would parse as a junk "property list" and
+  // deactivate the entire real roster. Refuse anything that isn't plausibly CSV.
+  const trimmed = String(text || '').trim();
+  if (!trimmed) throw new Error('empty response');
+  if (trimmed[0] === '<' || /^<!doctype|^<html|<\/?(html|head|body)\b/i.test(trimmed)) {
+    throw new Error('source returned HTML, not CSV — check the URL is a published/exported CSV link');
+  }
   const type = sniffType(text);
   if (type === 'report') {
     const report = parseCsv(text);

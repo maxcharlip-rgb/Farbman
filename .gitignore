@@ -4,3 +4,4 @@ data/yardi-inbox/
 .DS_Store
 npm-debug.log*
 .gstack/
+videos/

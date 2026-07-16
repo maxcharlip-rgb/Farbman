@@ -897,7 +897,45 @@ function setRoleTabs() {
   });
 }
 
+// ── sign-in: pick your role when the demo opens ────────
+// Shown once per browser session so every demo starts from "who are you?".
+// The "Acting as" tabs still switch roles at any time after.
+function showSignIn() {
+  const roles = [
+    { role: 'Accountant', name: 'Property Accountant', sub: 'Prepares the draft' },
+    { role: 'Reviewer', name: 'Property Manager', sub: 'Reviews & dispositions' },
+    { role: 'Supervisor', name: 'Accounting Supervisor', sub: 'Signs off' },
+    { role: 'Owner Representative', name: 'Owner Representative', sub: 'Receives the report' },
+  ];
+  const ov = document.createElement('div');
+  ov.className = 'signin';
+  ov.innerHTML = `
+    <div class="signin-card" role="dialog" aria-modal="true" aria-labelledby="signinTitle">
+      <div class="signin-eyebrow">Farbman Group · FirstPass</div>
+      <h2 id="signinTitle">Sign in as your role</h2>
+      <p class="signin-sub">Pick who you are — you'll see the whole workflow from that seat.
+        You can switch roles anytime with the “Acting as” tabs.</p>
+      <div class="signin-roles">
+        ${roles.map((r) => `
+          <button class="signin-role" data-role="${esc(r.role)}">
+            <span class="sr-name">${esc(r.name)}</span>
+            <span class="sr-sub">${esc(r.sub)}</span>
+          </button>`).join('')}
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  $$('.signin-role', ov).forEach((b) => (b.onclick = () => {
+    ROLE = b.dataset.role;
+    localStorage.setItem('farbman_role', ROLE);
+    sessionStorage.setItem('fp_signed_in', '1');
+    ov.remove();
+    setRoleTabs();
+    router();
+  }));
+}
+
 // ── boot ───────────────────────────────────────────────
 setRoleTabs();
 window.addEventListener('hashchange', router);
 router();
+if (!sessionStorage.getItem('fp_signed_in')) showSignIn();

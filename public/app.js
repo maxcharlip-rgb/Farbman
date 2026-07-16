@@ -907,11 +907,13 @@ function showSignIn() {
   const ov = document.createElement('div');
   ov.className = 'signin';
   ov.innerHTML = `
-    <div class="signin-card" role="dialog" aria-modal="true" aria-labelledby="signinTitle">
+    <div class="signin-glow g1"></div><div class="signin-glow g2"></div>
+    <div class="signin-hero" role="dialog" aria-modal="true" aria-labelledby="signinTitle">
       <div class="signin-eyebrow">Farbman Group · FirstPass</div>
-      <h2 id="signinTitle">Sign in as your role</h2>
-      <p class="signin-sub">Pick who you are — you'll see the whole workflow from that seat.
-        To change seats later, sign out from the bar up top.</p>
+      <h1 class="signin-h1">Month-end review,<br><span class="rotor" id="signinRotor">faster.</span></h1>
+      <p class="signin-tag">The AI first pass reads every property report and flags what matters —
+        your team decides, signs off, and releases. Every call on the record.</p>
+      <div class="signin-label" id="signinTitle">Sign in as your role</div>
       <div class="signin-roles">
         ${roles.map((r) => `
           <button class="signin-role" data-role="${esc(r.role)}">
@@ -919,9 +921,27 @@ function showSignIn() {
             <span class="sr-sub">${esc(r.sub)}</span>
           </button>`).join('')}
       </div>
+      <div class="signin-foot">Demo — pick any seat; sign out from the top bar to change.</div>
     </div>`;
   document.body.appendChild(ov);
-  $$('.signin-role', ov).forEach((b) => (b.onclick = () => {
+
+  // Cycling headline word (framer-motion idea, translated to plain CSS/JS).
+  const words = ['faster.', 'consistent.', 'defensible.'];
+  let wi = 0;
+  let rotorTimer = null;
+  const rotor = ov.querySelector('#signinRotor');
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    rotorTimer = setInterval(() => {
+      wi = (wi + 1) % words.length;
+      rotor.classList.remove('swap');
+      void rotor.offsetWidth; // restart the animation
+      rotor.textContent = words[wi];
+      rotor.classList.add('swap');
+    }, 2200);
+  }
+
+  $('.signin-role', ov).forEach((b) => (b.onclick = () => {
+    if (rotorTimer) clearInterval(rotorTimer);
     ROLE = b.dataset.role;
     localStorage.setItem('farbman_role', ROLE);
     sessionStorage.setItem('fp_signed_in', '1');

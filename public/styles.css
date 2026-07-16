@@ -230,6 +230,22 @@ table.fin tr.total td:first-child { color: var(--navy); }
 .peer .disp-tag { font-weight: 700; }
 .peer .peer-note { font-style: italic; color: var(--muted); }
 
+/* team chat */
+.chat-list { display: flex; flex-direction: column; gap: 10px; max-height: 56vh; overflow-y: auto;
+  padding: 4px 2px 10px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.chat-msg { max-width: 72%; background: var(--slate-bg); border: 1px solid var(--line); border-radius: 12px 12px 12px 4px; padding: 8px 12px; align-self: flex-start; }
+.chat-msg.mine { align-self: flex-end; background: #e7eef6; border-color: #cfdcec; border-radius: 12px 12px 4px 12px; }
+.chat-meta { display: flex; gap: 8px; align-items: baseline; margin-bottom: 2px; }
+.chat-who { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 1px 8px; border-radius: 999px; }
+.chat-Accountant { background: #e5eff5; color: var(--accent); }
+.chat-Reviewer { background: #e7eef6; color: var(--navy); }
+.chat-Supervisor { background: var(--green-bg); color: var(--green); }
+.chat-text { font-size: 13.5px; color: var(--ink); word-break: break-word; }
+.chat-tag { display: inline-block; font-size: 11px; background: var(--slate-bg); border: 1px solid var(--line-strong); color: var(--navy); border-radius: 999px; padding: 1px 8px; margin-left: 6px; }
+.chat-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chat-form input[type="text"] { flex: 1 1 260px; min-width: 0; font-family: inherit; font-size: 13.5px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 8px; }
+.chat-prop { font-family: inherit; font-size: 12.5px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--ink-soft); max-width: 220px; }
+
 /* trend */
 table.trend { margin-top: 4px; }
 table.trend th { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); text-align: right; padding: 4px 2px; border-bottom: 1px solid var(--line); }

@@ -24,6 +24,7 @@ async function api(path, opts = {}) {
 const routes = [
   [/^#\/$/, renderPortfolio],
   [/^#\/property\/(.+)$/, renderProperty],
+  [/^#\/chat$/, renderChat],
   [/^#\/calibration$/, renderCalibration],
   [/^#\/audit$/, renderAudit],
   [/^#\/sync$/, renderSync],
@@ -478,7 +479,8 @@ function wireFindingActions(reportId) {
         let note = '';
         if (action === 'dismiss') {
           note = prompt('Dismiss this finding — note why it is not an issue (required):', '');
-          if (!note) return;
+          if (note === null) return; // cancelled
+          if (!note.trim()) return alert('A note is required to dismiss a finding.');
         } else if (action === 'accept') {
           note = prompt('Accept this finding — optional note (e.g. "will correct in next period"):', '') || '';
         }
@@ -557,6 +559,78 @@ async function loadBriefing(propertyId) {
   } catch (e) {
     el.innerHTML = `<h4>Reviewer briefing</h4><pre>${esc(e.message)}</pre>`;
   }
+}
+
+// ── Team chat (cross-department; internal roles only) ──
+let CHAT_TIMER = null;
+let CHAT_LAST_ID = null;
+
+async function renderChat() {
+  if (CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; }
+  if (ROLE === 'Owner Representative') {
+    $('#view').innerHTML = `<div class="panel"><div class="empty">Team chat is internal to Farbman departments.<br>
+      <span class="sm">Switch to an internal role above to join the conversation.</span></div></div>`;
+    return;
+  }
+  const [chat, portfolio] = await Promise.all([api('/api/chat'), api('/api/portfolio').catch(() => null)]);
+  const props = portfolio ? portfolio.properties : [];
+  $('#view').innerHTML = `
+    <div class="panel chat-panel">
+      <div class="panel-head"><h2>Team chat</h2>
+        <span class="muted sm">Across departments — accountants, managers, and supervisors in one place. You're posting as <strong>${esc(roleLabel(ROLE))}</strong>.</span></div>
+      <div id="chatList" class="chat-list" aria-live="polite"></div>
+      <form id="chatForm" class="chat-form">
+        <select id="chatProp" class="chat-prop" title="Optionally tag a property">
+          <option value="">No property tag</option>
+          ${props.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}
+        </select>
+        <input id="chatText" type="text" maxlength="2000" placeholder="Message the team…" autocomplete="off" />
+        <button class="run-btn" type="submit">Send</button>
+      </form>
+    </div>`;
+
+  const propName = (id) => { const p = props.find((x) => x.id === id); return p ? p.name : id; };
+  const renderMsgs = (messages, append) => {
+    const el = $('#chatList');
+    if (!el) return;
+    if (!append) el.innerHTML = '';
+    if (!messages.length && !append && !el.children.length) {
+      el.innerHTML = `<div class="empty sm">No messages yet — start the conversation.</div>`;
+      return;
+    }
+    if (!append && el.querySelector('.empty')) el.innerHTML = '';
+    for (const m of messages) {
+      const mine = m.role === ROLE;
+      const row = document.createElement('div');
+      row.className = 'chat-msg' + (mine ? ' mine' : '');
+      row.innerHTML = `
+        <div class="chat-meta"><span class="chat-who chat-${esc(m.role).replace(/\s+/g, '-')}">${esc(roleLabel(m.role))}</span>
+          <span class="muted sm">${esc(m.by)} · ${fmtTime(m.at)}</span></div>
+        <div class="chat-text">${esc(m.text)}${m.propertyId ? ` <a class="chat-tag" href="#/property/${esc(m.propertyId)}">${esc(propName(m.propertyId))}</a>` : ''}</div>`;
+      el.appendChild(row);
+      CHAT_LAST_ID = m.id;
+    }
+    el.scrollTop = el.scrollHeight;
+  };
+  renderMsgs(chat.messages, false);
+
+  $('#chatForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const text = $('#chatText').value.trim();
+    if (!text) return;
+    $('#chatText').value = '';
+    try {
+      const r = await api('/api/chat', { method: 'POST', body: { text, propertyId: $('#chatProp').value || undefined } });
+      renderMsgs([r.message], true);
+    } catch (err) { alert(err.message); }
+  };
+
+  // Poll for new messages while the page is open.
+  CHAT_TIMER = setInterval(async () => {
+    if (!$('#chatList')) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; return; }
+    const r = await api('/api/chat' + (CHAT_LAST_ID ? '?after=' + encodeURIComponent(CHAT_LAST_ID) : '')).catch(() => null);
+    if (r && r.messages.length) renderMsgs(r.messages, true);
+  }, 5000);
 }
 
 // ── Calibration ────────────────────────────────────────

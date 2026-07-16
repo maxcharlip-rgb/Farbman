@@ -40,6 +40,7 @@ function freshStore() {
       lastResult: null,
     },
     audit: [], // append-only [{ at, type, by, role, propertyId, reportId, detail }]
+    chat: [], // cross-department team chat [{ id, by, role, text, propertyId, at }] — internal roles only
   };
 }
 
@@ -79,6 +80,8 @@ function load() {
       _store = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
       if (!_store.sends) _store.sends = {}; // backfill for stores written before this field
       if (!_store.submissions) _store.submissions = {}; // backfill per-role submissions
+      if (!_store.chat) _store.chat = {}; // backfill team chat
+      if (!Array.isArray(_store.chat)) _store.chat = []; // (and normalize the shape)
       if (!_store.connector) _store.connector = freshStore().connector; // backfill data-source connector
       delete _store.stages; // the sequential sign-off chain was replaced by per-role draft/submit
       migrateDispositions(_store);
@@ -185,6 +188,34 @@ function dispositionsView(reportId, viewerRole) {
   }
   const submittedRoles = Object.keys(subs).filter((r) => r !== viewerRole).map((r) => ({ role: r, at: subs[r].at, by: subs[r].by }));
   return { mine, others, submittedByMe: !!subs[viewerRole], submittedByMeAt: subs[viewerRole] ? subs[viewerRole].at : null, submittedRoles };
+}
+
+// ── Team chat (cross-department; internal roles only — enforced at the API) ──
+const CHAT_CAP = 500; // keep the store bounded
+
+function addChatMessage({ by, role, text, propertyId }) {
+  const s = load();
+  const msg = {
+    id: `msg_${Date.now().toString(36)}_${s.chat.length}`,
+    by, role,
+    text: String(text).slice(0, 2000),
+    propertyId: propertyId || null,
+    at: new Date().toISOString(),
+  };
+  s.chat.push(msg);
+  if (s.chat.length > CHAT_CAP) s.chat = s.chat.slice(-CHAT_CAP);
+  save();
+  return msg;
+}
+
+/** Latest messages (chronological). Pass `after` (a message id) to get only newer ones. */
+function getChat({ limit = 200, after = null } = {}) {
+  const all = load().chat;
+  if (after) {
+    const i = all.findIndex((m) => m.id === after);
+    if (i >= 0) return all.slice(i + 1);
+  }
+  return all.slice(-limit);
 }
 
 function saveReview(reportId, review, ranBy, role) {
@@ -434,6 +465,8 @@ module.exports = {
   getAuditFor,
   getConnector,
   setConnector,
+  addChatMessage,
+  getChat,
   roleDispositions,
   isSubmitted,
   getSubmission,

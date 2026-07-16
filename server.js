@@ -27,6 +27,12 @@ function roleName(role) {
   return { Accountant: 'A. Accountant', Reviewer: 'L. Reviewer', Supervisor: 'D. Okafor (Supervisor)', 'Owner Representative': 'Owner Representative' }[role] || role;
 }
 
+// The owner rep only receives the RELEASED package — everything else about a
+// report (draft, findings, trend, briefing, export) stays internal until then.
+function ownerRepBlocked(req, reportId) {
+  return actor(req).role === 'Owner Representative' && reportId && !store.getSent(reportId);
+}
+
 // An unsubmitted disposition is private to its author, so hide other roles'
 // unsubmitted disposition events from the audit trail a viewer sees.
 function visibleAudit(events, role) {
@@ -70,7 +76,12 @@ app.get('/api/portfolio', (req, res) => {
       ownerRep: p.ownerRep || null,
     };
   });
-  const divisionCounts = store.load().divisionCounts;
+  // Counts reflect the live roster (active properties), not the hardcoded seed.
+  const divisionCounts = {};
+  for (const p of store.getProperties()) {
+    if (p.status === 'inactive') continue;
+    divisionCounts[p.division] = (divisionCounts[p.division] || 0) + 1;
+  }
   res.json({ divisionCounts, divisionBlurbs: DIVISION_BLURBS, properties: props, llmEnabled: !!process.env.ANTHROPIC_API_KEY });
 });
 
@@ -82,7 +93,7 @@ app.get('/api/property/:id', (req, res) => {
   const reportId = prop.currentReportId;
   // The owner representative RECEIVES the finished package — the draft, findings,
   // and in-progress review stay off their page until the team releases it.
-  if (role === 'Owner Representative' && reportId && !store.getSent(reportId)) {
+  if (ownerRepBlocked(req, reportId)) {
     return res.json({
       property: { id: prop.id, name: prop.name, division: prop.division, code: prop.code || null, ownerRep: prop.ownerRep || null },
       report: null, review: null, dispositions: { mine: {}, others: {}, submittedRoles: [] },
@@ -112,6 +123,7 @@ app.get('/api/property/:id', (req, res) => {
 app.get('/api/report/:id', (req, res) => {
   const report = store.getReport(req.params.id);
   if (!report) return res.status(404).json({ error: 'report not found' });
+  if (ownerRepBlocked(req, req.params.id)) return res.status(403).json({ error: 'This report has not been released to you yet.' });
   res.json(report);
 });
 
@@ -119,8 +131,7 @@ app.get('/api/report/:id', (req, res) => {
 app.get('/api/export/:propertyId', async (req, res) => {
   const prop = store.getProperty(req.params.propertyId);
   if (!prop) return res.status(404).json({ error: 'property not found' });
-  const { role } = actor(req);
-  if (role === 'Owner Representative' && !store.getSent(prop.currentReportId))
+  if (ownerRepBlocked(req, prop.currentReportId))
     return res.status(403).json({ error: 'This report has not been released to you yet.' });
   const report = store.getReport(prop.currentReportId);
   if (!report) return res.status(404).json({ error: 'report not found' });
@@ -296,6 +307,7 @@ app.post('/api/connector/simulate', (req, res) => {
 app.get('/api/trend/:propertyId', (req, res) => {
   const prop = store.getProperty(req.params.propertyId);
   if (!prop) return res.status(404).json({ error: 'property not found' });
+  if (ownerRepBlocked(req, prop.currentReportId)) return res.status(403).json({ error: 'This report has not been released to you yet.' });
   const chain = store.getChain(prop.currentReportId);
   res.json({
     propertyId: prop.id,
@@ -313,6 +325,24 @@ app.get('/api/trend/:propertyId', (req, res) => {
   });
 });
 
+// ── Team chat — cross-department, internal roles only ──────────────────────
+// The owner representative is the external recipient; internal review
+// discussion (like unsubmitted dispositions) stays off their screen.
+app.get('/api/chat', (req, res) => {
+  const { role } = actor(req);
+  if (role === 'Owner Representative') return res.status(403).json({ error: 'Team chat is internal — switch to an internal role.' });
+  res.json({ messages: store.getChat({ after: req.query.after || null }) });
+});
+app.post('/api/chat', (req, res) => {
+  const { text, propertyId } = req.body || {};
+  const { by, role } = actor(req);
+  if (role === 'Owner Representative') return res.status(403).json({ error: 'Team chat is internal — switch to an internal role.' });
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return res.status(400).json({ error: 'message text is required' });
+  if (propertyId && !store.getProperty(propertyId)) return res.status(400).json({ error: 'unknown propertyId' });
+  res.json({ message: store.addChatMessage({ by, role, text: trimmed, propertyId }) });
+});
+
 // ── Calibration + audit ────────────────────────────────
 app.get('/api/calibration', (req, res) => res.json(store.calibration()));
 // The audit trail hides other roles' still-unsubmitted disposition activity.
@@ -326,6 +356,7 @@ app.post('/api/briefing', async (req, res) => {
   const { propertyId } = req.body || {};
   const prop = store.getProperty(propertyId);
   if (!prop) return res.status(404).json({ error: 'property not found' });
+  if (ownerRepBlocked(req, prop.currentReportId)) return res.status(403).json({ error: 'This report has not been released to you yet.' });
   const review = store.getReview(prop.currentReportId);
   if (!review) return res.status(409).json({ error: 'run the review first' });
   try {

@@ -221,7 +221,6 @@ function renderSubmitBar(d, disp) {
   el.innerHTML = `<div><strong>Your review is a private draft.</strong> <span class="muted sm">${mineCount} finding${mineCount === 1 ? '' : 's'} dispositioned — nobody else sees them until you submit.</span>${alsoSubmitted}</div>
     <button class="run-btn" id="submitBtn">Submit my review</button>`;
   $('#submitBtn').onclick = async () => {
-    if (!confirm('Submit your review? Your dispositions become visible to the other roles.')) return;
     try {
       await api('/api/submit', { method: 'POST', body: { reportId: d.report.id } });
       launchBalloons({ count: 12 });
@@ -278,8 +277,7 @@ function renderSendBar(d) {
 }
 
 async function doSend(propertyId, rep) {
-  const who = rep ? `${rep.name} (${rep.email})` : 'the owner representative';
-  if (!confirm(`Release the reviewed, signed-off report to ${who}?\n\n(Prototype: this records the release in the audit trail — it does not send a real email.)`)) return;
+  // One click releases it (prototype: records the release in the audit trail; no real email).
   try {
     await api('/api/send-to-owner', { method: 'POST', body: { propertyId } });
     launchBalloons({ count: 20, goldBias: true });

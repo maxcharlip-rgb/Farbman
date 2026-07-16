@@ -28,24 +28,13 @@
         </div>
       </div>
       <div class="rolebar">
-        <span class="rolebar-label">Acting as</span>
-        <div class="role-tabs" id="roleTabs" role="tablist" aria-label="Acting as">
-          <button class="rtab" role="tab" data-role="Accountant">
-            <span class="rtab-name">Property Accountant</span>
-            <span class="rtab-sub">Prepares the draft</span>
-          </button>
-          <button class="rtab" role="tab" data-role="Reviewer">
-            <span class="rtab-name">Property Manager</span>
-            <span class="rtab-sub">Reviews &amp; dispositions</span>
-          </button>
-          <button class="rtab" role="tab" data-role="Supervisor">
-            <span class="rtab-name">Accounting Supervisor</span>
-            <span class="rtab-sub">Signs off</span>
-          </button>
-          <button class="rtab" role="tab" data-role="Owner Representative">
-            <span class="rtab-name">Owner Representative</span>
-            <span class="rtab-sub">Receives the report</span>
-          </button>
+        <span class="rolebar-label">Signed in as</span>
+        <div class="whoami" id="whoami">
+          <div class="who-id">
+            <span class="who-name" id="whoName"></span>
+            <span class="who-sub" id="whoSub"></span>
+          </div>
+          <button class="who-out" id="signOutBtn" title="Sign out and pick a different role">Sign out</button>
         </div>
       </div>
       <div class="notbar">

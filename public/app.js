@@ -569,7 +569,7 @@ async function renderChat() {
   if (CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; }
   if (ROLE === 'Owner Representative') {
     $('#view').innerHTML = `<div class="panel"><div class="empty">Team chat is internal to Farbman departments.<br>
-      <span class="sm">Switch to an internal role above to join the conversation.</span></div></div>`;
+      <span class="sm">Sign out (top bar) and sign in as an internal role to join the conversation.</span></div></div>`;
     return;
   }
   const [chat, portfolio] = await Promise.all([api('/api/chat'), api('/api/portfolio').catch(() => null)]);
@@ -881,21 +881,16 @@ function roleLabel(role) {
   return { Accountant: 'Property Accountant', Reviewer: 'Property Manager', Supervisor: 'Accounting Supervisor', 'Owner Representative': 'Owner Representative' }[role] || role;
 }
 
-// ── role tabs ──────────────────────────────────────────
-function setRoleTabs() {
-  $$('#roleTabs .rtab').forEach((b) => {
-    const on = b.dataset.role === ROLE;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-selected', on ? 'true' : 'false');
-    b.onclick = () => {
-      if (ROLE === b.dataset.role) return;
-      ROLE = b.dataset.role;
-      localStorage.setItem('farbman_role', ROLE);
-      setRoleTabs();
-      router(); // re-render so role-gated actions update
-    };
-  });
+// ── signed-in identity bar ─────────────────────────────
+const ROLE_SUBS = { Accountant: 'Prepares the draft', Reviewer: 'Reviews & dispositions', Supervisor: 'Signs off', 'Owner Representative': 'Receives the report' };
+function updateWhoami() {
+  $('#whoName').textContent = roleLabel(ROLE);
+  $('#whoSub').textContent = ROLE_SUBS[ROLE] || '';
 }
+$('#signOutBtn').onclick = () => {
+  sessionStorage.removeItem('fp_signed_in');
+  showSignIn();
+};
 
 // ── sign-in: pick your role when the demo opens ────────
 // Shown once per browser session so every demo starts from "who are you?".
@@ -907,6 +902,8 @@ function showSignIn() {
     { role: 'Supervisor', name: 'Accounting Supervisor', sub: 'Signs off' },
     { role: 'Owner Representative', name: 'Owner Representative', sub: 'Receives the report' },
   ];
+  const existing = document.querySelector('.signin');
+  if (existing) existing.remove();
   const ov = document.createElement('div');
   ov.className = 'signin';
   ov.innerHTML = `
@@ -914,7 +911,7 @@ function showSignIn() {
       <div class="signin-eyebrow">Farbman Group · FirstPass</div>
       <h2 id="signinTitle">Sign in as your role</h2>
       <p class="signin-sub">Pick who you are — you'll see the whole workflow from that seat.
-        You can switch roles anytime with the “Acting as” tabs.</p>
+        To change seats later, sign out from the bar up top.</p>
       <div class="signin-roles">
         ${roles.map((r) => `
           <button class="signin-role" data-role="${esc(r.role)}">
@@ -929,13 +926,13 @@ function showSignIn() {
     localStorage.setItem('farbman_role', ROLE);
     sessionStorage.setItem('fp_signed_in', '1');
     ov.remove();
-    setRoleTabs();
+    updateWhoami();
     router();
   }));
 }
 
 // ── boot ───────────────────────────────────────────────
-setRoleTabs();
+updateWhoami();
 window.addEventListener('hashchange', router);
 router();
 if (!sessionStorage.getItem('fp_signed_in')) showSignIn();

@@ -461,7 +461,7 @@ function card(f, tier, disp, peers, canDispo) {
     action = `<div class="actions" data-fid="${esc(f.id)}">
       <button class="act resolve" data-act="resolve">Mark resolved</button>
       <button class="act accept" data-act="accept">Accept</button>
-      <button class="act dismiss" data-act="dismiss">Dismiss…</button>
+      <button class="act dismiss" data-act="dismiss">Dismiss</button>
     </div>`;
   }
 
@@ -473,38 +473,30 @@ function card(f, tier, disp, peers, canDispo) {
 }
 
 function wireFindingActions(reportId) {
-  $$('.actions').forEach((box) => {
-    const fid = box.dataset.fid;
-    $$('.act', box).forEach((btn) => {
-      btn.onclick = async () => {
-        const action = btn.dataset.act;
-        let note = '';
-        if (action === 'dismiss') {
-          note = prompt('Dismiss this finding — note why it is not an issue (required):', '');
-          if (note === null) return; // cancelled
-          if (!note.trim()) return alert('A note is required to dismiss a finding.');
-        } else if (action === 'accept') {
-          note = prompt('Accept this finding — optional note (e.g. "will correct in next period"):', '') || '';
-        }
-        try {
-          await api('/api/disposition', { method: 'POST', body: { reportId, findingId: fid, action, note } });
-          const id = location.hash.match(/property\/(.+)$/)[1];
-          renderProperty(id);
-        } catch (e) { alert(e.message); }
-      };
-    });
-  });
-  $$('[data-reopen]').forEach((b) => (b.onclick = async () => {
+  // One click, no popups — the decision applies immediately.
+  const send = async (fid, action) => {
     try {
-      // re-open = set back to accept with no decision? Simpler: prompt for a new action.
-      const action = prompt('Change disposition to: resolve / accept / dismiss', 'accept');
-      if (!['resolve', 'accept', 'dismiss'].includes(action)) return;
-      let note = '';
-      if (action === 'dismiss') { note = prompt('Note why it is not an issue (required):', '') || ''; if (!note) return; }
-      await api('/api/disposition', { method: 'POST', body: { reportId, findingId: b.dataset.reopen, action, note } });
+      await api('/api/disposition', { method: 'POST', body: { reportId, findingId: fid, action, note: '' } });
       const id = location.hash.match(/property\/(.+)$/)[1];
       renderProperty(id);
     } catch (e) { alert(e.message); }
+  };
+  $$('.actions').forEach((box) => {
+    $$('.act', box).forEach((btn) => (btn.onclick = () => send(box.dataset.fid, btn.dataset.act)));
+  });
+  // "change" swaps the recorded decision back to the three buttons, inline.
+  $$('[data-reopen]').forEach((b) => (b.onclick = () => {
+    const fid = b.dataset.reopen;
+    const disp = b.closest('.disp');
+    const box = document.createElement('div');
+    box.className = 'actions';
+    box.dataset.fid = fid;
+    box.innerHTML = `
+      <button class="act resolve" data-act="resolve">Mark resolved</button>
+      <button class="act accept" data-act="accept">Accept</button>
+      <button class="act dismiss" data-act="dismiss">Dismiss</button>`;
+    disp.replaceWith(box);
+    $$('.act', box).forEach((btn) => (btn.onclick = () => send(fid, btn.dataset.act)));
   }));
 }
 

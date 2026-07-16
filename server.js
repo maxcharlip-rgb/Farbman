@@ -179,7 +179,6 @@ app.post('/api/disposition', (req, res) => {
   const { reportId, findingId, action, note } = req.body || {};
   if (!reportId || !findingId || !action) return res.status(400).json({ error: 'reportId, findingId, action required' });
   if (!['accept', 'dismiss', 'resolve'].includes(action)) return res.status(400).json({ error: 'invalid action' });
-  if (action === 'dismiss' && !note) return res.status(400).json({ error: 'a note is required to dismiss a finding' });
   const { by, role } = actor(req);
   if (role === 'Owner Representative') return res.status(403).json({ error: 'The owner representative receives a read-only package and does not disposition findings.' });
   const review = store.getReview(reportId);

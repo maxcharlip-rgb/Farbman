@@ -131,6 +131,9 @@ function save() {
 function audit(evt) {
   const s = load();
   s.audit.push({ at: new Date().toISOString(), ...evt });
+  // Keep the log bounded: an always-on host with a polling connector would
+  // otherwise grow this forever. 5k entries is far beyond any demo's needs.
+  if (s.audit.length > 5000) s.audit = s.audit.slice(-4000);
   save();
 }
 
@@ -412,7 +415,10 @@ function syncProperties(list, { by, role }) {
   }
 
   save();
-  audit({
+  // A scheduled poll that changed nothing is not an auditable event — only log
+  // automated syncs that did something (manual syncs always log).
+  const changedNothing = !added.length && !updated.length && !deactivated.length;
+  if (!(changedNothing && role === 'System')) audit({
     type: 'property_sync',
     by,
     role,

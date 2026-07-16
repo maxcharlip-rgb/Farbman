@@ -73,3 +73,13 @@ test('re-running the first-pass review invalidates a prior sign-off', () => {
   store.saveReview(rid, review, 'Tester', 'Reviewer'); // re-run
   assert.strictEqual(store.getSignoff(rid), null, 're-run must clear the stale sign-off');
 });
+
+test('an automated no-change roster sync does not spam the audit log', () => {
+  const list = [{ code: 'CODEA', name: 'Prop A' }, { code: 'CODEB', name: 'Prop B' }, { code: 'CODEC', name: 'Prop C' }, { code: 'CODED', name: 'Prop D' }, { code: 'CODEE', name: 'Prop E' }];
+  store.syncProperties(list, { by: 'Yardi export (automated)', role: 'System' }); // first sync changes things → audited
+  const before = store.load().audit.length;
+  store.syncProperties(list, { by: 'Yardi export (automated)', role: 'System' }); // identical poll → no audit entry
+  assert.strictEqual(store.load().audit.length, before, 'no-op automated poll must not audit');
+  store.syncProperties(list, { by: 'M. Human', role: 'Accountant' }); // manual sync always logs
+  assert.strictEqual(store.load().audit.length, before + 1);
+});

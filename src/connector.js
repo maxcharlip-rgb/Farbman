@@ -67,8 +67,12 @@ function fetchUrl(url, redirects = 0) {
       }
       if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
       let data = '';
+      const MAX = 4 * 1024 * 1024; // 4MB — far above any real roster/report CSV
       res.setEncoding('utf8');
-      res.on('data', (c) => (data += c));
+      res.on('data', (c) => {
+        data += c;
+        if (data.length > MAX) { req.destroy(new Error('response too large (>4MB) — not a CSV export?')); }
+      });
       res.on('end', () => resolve(data));
     });
     req.on('error', reject);

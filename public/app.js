@@ -969,7 +969,7 @@ function showSignIn() {
     }, 2200);
   }
 
-  $('.signin-role', ov).forEach((b) => (b.onclick = () => {
+  $$('.signin-role', ov).forEach((b) => (b.onclick = () => {
     if (rotorTimer) clearInterval(rotorTimer);
     ROLE = b.dataset.role;
     localStorage.setItem('farbman_role', ROLE);

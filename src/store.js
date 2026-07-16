@@ -208,6 +208,14 @@ function addChatMessage({ by, role, text, propertyId }) {
   return msg;
 }
 
+/** Attach Outlook ping results to a chat message. */
+function setChatPings(messageId, pings) {
+  const s = load();
+  const m = s.chat.find((x) => x.id === messageId);
+  if (m) { m.pings = pings; save(); }
+  return m;
+}
+
 /** Latest messages (chronological). Pass `after` (a message id) to get only newer ones. */
 function getChat({ limit = 200, after = null } = {}) {
   const all = load().chat;
@@ -467,6 +475,7 @@ module.exports = {
   setConnector,
   addChatMessage,
   getChat,
+  setChatPings,
   roleDispositions,
   isSubmitted,
   getSubmission,

@@ -298,6 +298,11 @@ table.fin tr.total td:first-child { color: var(--navy); }
 .chat-form input[type="text"] { flex: 1 1 260px; min-width: 0; font-family: inherit; font-size: 13.5px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 8px; }
 .chat-prop { font-family: inherit; font-size: 12.5px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--ink-soft); max-width: 220px; }
 
+.mention { color: var(--accent); font-weight: 700; }
+.ping-row { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
+.ping-chip { font-size: 10.5px; font-weight: 600; background: #eef3f7; border: 1px solid #d3e0ea; color: var(--navy);
+  border-radius: 999px; padding: 1px 8px; }
+
 /* trend */
 table.trend { margin-top: 4px; }
 table.trend th { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); text-align: right; padding: 4px 2px; border-bottom: 1px solid var(--line); }

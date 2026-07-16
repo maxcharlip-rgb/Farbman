@@ -9,6 +9,7 @@ const { generateBriefing } = require('./src/llm');
 const { parseCsv, CSV_TEMPLATE, parsePropertyList } = require('./src/ingest');
 const { buildReportDocx, contentDisposition } = require('./src/export/word');
 const connector = require('./src/connector');
+const outlook = require('./src/outlook');
 
 const app = express();
 app.use(express.json({ limit: '4mb' }));
@@ -332,14 +333,24 @@ app.get('/api/chat', (req, res) => {
   if (role === 'Owner Representative') return res.status(403).json({ error: 'Team chat is internal — switch to an internal role.' });
   res.json({ messages: store.getChat({ after: req.query.after || null }) });
 });
-app.post('/api/chat', (req, res) => {
+app.post('/api/chat', async (req, res) => {
   const { text, propertyId } = req.body || {};
   const { by, role } = actor(req);
   if (role === 'Owner Representative') return res.status(403).json({ error: 'Team chat is internal — switch to an internal role.' });
   const trimmed = String(text || '').trim();
   if (!trimmed) return res.status(400).json({ error: 'message text is required' });
-  if (propertyId && !store.getProperty(propertyId)) return res.status(400).json({ error: 'unknown propertyId' });
-  res.json({ message: store.addChatMessage({ by, role, text: trimmed, propertyId }) });
+  const prop = propertyId ? store.getProperty(propertyId) : null;
+  if (propertyId && !prop) return res.status(400).json({ error: 'unknown propertyId' });
+  const message = store.addChatMessage({ by, role, text: trimmed, propertyId });
+  // @mentions → Outlook ping (real Graph mail when configured; recorded either way)
+  const mentioned = outlook.parseMentions(trimmed).filter((p) => p.role !== role); // don't ping yourself
+  if (mentioned.length) {
+    const pings = await Promise.all(mentioned.map((p) => outlook.ping(p, { from: by, text: trimmed, propertyName: prop ? prop.name : null })));
+    store.setChatPings(message.id, pings);
+    message.pings = pings;
+    for (const p of pings) store.audit({ type: 'outlook_ping', by, role, propertyId: propertyId || null, reportId: null, detail: `Outlook ping → ${p.email} (${p.status})` });
+  }
+  res.json({ message, outlookConfigured: outlook.configured() });
 });
 
 // ── Calibration + audit ────────────────────────────────

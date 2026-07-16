@@ -26,6 +26,17 @@ services:
     #   # Enable Claude-written reviewer briefings (set the secret value in the dashboard):
     #   - key: ANTHROPIC_API_KEY
     #     sync: false
+    #   # Real Outlook pings for @mentions in team chat (Azure app registration
+    #   # with the Mail.Send application permission — created once by IT).
+    #   # Without these, pings are recorded in-app as "demo".
+    #   - key: MS_TENANT_ID
+    #     sync: false
+    #   - key: MS_CLIENT_ID
+    #     sync: false
+    #   - key: MS_CLIENT_SECRET
+    #     sync: false
+    #   - key: OUTLOOK_SENDER
+    #     value: firstpass@farbman.com
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAID persistence (opt-in) — ONLY uncomment when you intend to pay for it.

@@ -579,7 +579,7 @@ async function renderChat() {
           <option value="">No property tag</option>
           ${props.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}
         </select>
-        <input id="chatText" type="text" maxlength="2000" placeholder="Message the team…" autocomplete="off" />
+        <input id="chatText" type="text" maxlength="2000" placeholder="Message the team… (@accountant @manager @supervisor pings them in Outlook)" autocomplete="off" />
         <button class="run-btn" type="submit">Send</button>
       </form>
     </div>`;
@@ -601,7 +601,8 @@ async function renderChat() {
       row.innerHTML = `
         <div class="chat-meta"><span class="chat-who chat-${esc(m.role).replace(/\s+/g, '-')}">${esc(roleLabel(m.role))}</span>
           <span class="muted sm">${esc(m.by)} · ${fmtTime(m.at)}</span></div>
-        <div class="chat-text">${esc(m.text)}${m.propertyId ? ` <a class="chat-tag" href="#/property/${esc(m.propertyId)}">${esc(propName(m.propertyId))}</a>` : ''}</div>`;
+        <div class="chat-text">${esc(m.text).replace(/@(accountant|manager|supervisor|all)/gi, '<span class="mention">@$1</span>')}${m.propertyId ? ` <a class="chat-tag" href="#/property/${esc(m.propertyId)}">${esc(propName(m.propertyId))}</a>` : ''}</div>
+        ${m.pings && m.pings.length ? `<div class="ping-row">${m.pings.map((p) => `<span class="ping-chip" title="${esc(p.email)}">✉ pinged @${esc(p.to)} via Outlook${p.status === 'simulated' ? ' · demo' : p.status === 'sent' ? '' : ' · ' + esc(p.status)}</span>`).join('')}</div>` : ''}`;
       el.appendChild(row);
       CHAT_LAST_ID = m.id;
     }

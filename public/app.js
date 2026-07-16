@@ -134,6 +134,18 @@ async function renderProperty(id) {
     api('/api/trend/' + id).catch(() => null),
   ]);
   const { property, report, review } = d;
+  // Owner rep before release: the package hasn't been handed to them yet.
+  if (d.notReleased) {
+    $('#view').innerHTML = `
+      <a class="back" href="#/">← Portfolio</a>
+      <div class="panel" style="text-align:center;padding:42px 24px;">
+        <h2 class="rname">${esc(property.name)}</h2>
+        <div class="muted sm">${esc(property.division)}${property.code ? ' · ' + esc(property.code) : ''}</div>
+        <p class="muted" style="max-width:520px;margin:14px auto 0;">This report hasn't been released to you yet.
+        It appears here — reviewed and signed off — once the team sends it.</p>
+      </div>`;
+    return;
+  }
   if (!report) return ($('#view').innerHTML = errorBox('Report not found'));
 
   // The owner rep receives a read-only package; every internal role runs their

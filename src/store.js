@@ -191,6 +191,8 @@ function saveReview(reportId, review, ranBy, role) {
   const s = load();
   const reviewId = `rv_${Date.now().toString(36)}`;
   s.reviews[reportId] = { reviewId, ranAt: new Date().toISOString(), ranBy, role, summary: review.summary, findings: review.findings, property: review.property };
+  // Re-running invalidates a prior sign-off — the findings it certified may have changed.
+  if (s.signoffs[reportId]) delete s.signoffs[reportId];
   save();
   audit({ type: 'review_run', by: ranBy, role, propertyId: review.property.propertyId, reportId, detail: `Ran first-pass review (${review.summary.problems} open items)` });
   return s.reviews[reportId];

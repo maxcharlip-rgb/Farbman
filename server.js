@@ -80,6 +80,16 @@ app.get('/api/property/:id', (req, res) => {
   if (!prop) return res.status(404).json({ error: 'property not found' });
   const { role } = actor(req);
   const reportId = prop.currentReportId;
+  // The owner representative RECEIVES the finished package — the draft, findings,
+  // and in-progress review stay off their page until the team releases it.
+  if (role === 'Owner Representative' && reportId && !store.getSent(reportId)) {
+    return res.json({
+      property: { id: prop.id, name: prop.name, division: prop.division, code: prop.code || null, ownerRep: prop.ownerRep || null },
+      report: null, review: null, dispositions: { mine: {}, others: {}, submittedRoles: [] },
+      signoff: null, sent: null, ownerRep: prop.ownerRep || null, blocking: null, audit: [],
+      role, canDispose: false, notReleased: true,
+    });
+  }
   const report = store.getReport(reportId);
   const review = store.getReview(reportId);
   res.json({
@@ -109,6 +119,9 @@ app.get('/api/report/:id', (req, res) => {
 app.get('/api/export/:propertyId', async (req, res) => {
   const prop = store.getProperty(req.params.propertyId);
   if (!prop) return res.status(404).json({ error: 'property not found' });
+  const { role } = actor(req);
+  if (role === 'Owner Representative' && !store.getSent(prop.currentReportId))
+    return res.status(403).json({ error: 'This report has not been released to you yet.' });
   const report = store.getReport(prop.currentReportId);
   if (!report) return res.status(404).json({ error: 'report not found' });
   try {

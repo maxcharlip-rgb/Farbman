@@ -61,3 +61,15 @@ test('syncProperties refuses a truncated list that would wipe most of the roster
 });
 
 after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
+
+test('re-running the first-pass review invalidates a prior sign-off', () => {
+  const rid = someReportId();
+  const review = seedReview(rid);
+  for (const f of store.blockingFindings(rid, 'Supervisor').open) {
+    store.setDisposition(rid, f.id, { action: 'accept', note: 'ok', by: 'S', role: 'Supervisor' });
+  }
+  store.signOff(rid, { by: 'S', role: 'Supervisor' });
+  assert.ok(store.getSignoff(rid), 'signed off');
+  store.saveReview(rid, review, 'Tester', 'Reviewer'); // re-run
+  assert.strictEqual(store.getSignoff(rid), null, 're-run must clear the stale sign-off');
+});

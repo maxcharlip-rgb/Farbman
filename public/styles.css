@@ -268,6 +268,20 @@ table.fin tr.total td:first-child { color: var(--navy); }
 @media (max-width: 460px) { .signin-roles { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .signin-role { transition: none; } .rotor.swap { animation: none; } }
 
+/* balloons — celebration on submit / sign-off / release */
+.bln-box { position: fixed; inset: 0; pointer-events: none; z-index: 200; overflow: hidden; }
+.bln { position: absolute; bottom: -140px; border-radius: 50% 50% 48% 48%; opacity: .92;
+  animation-name: bln-rise, bln-sway; animation-timing-function: cubic-bezier(.25,.4,.5,1), ease-in-out;
+  animation-fill-mode: forwards, none; animation-iteration-count: 1, infinite; animation-direction: normal, alternate;
+  box-shadow: inset -6px -8px 0 rgba(0,0,0,.12); }
+.bln::before { content: ""; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px;
+  transform: translateX(-50%) rotate(45deg); background: inherit; border-radius: 2px; filter: brightness(.92); }
+.bln::after { content: ""; position: absolute; left: 50%; bottom: -46px; width: 1.5px; height: 40px;
+  background: rgba(20,40,64,.35); }
+@keyframes bln-rise { to { transform: translateY(-118vh) rotate(4deg); } }
+@keyframes bln-sway { from { margin-left: -14px; } to { margin-left: 14px; } }
+@media (prefers-reduced-motion: reduce) { .bln-box { display: none; } }
+
 /* team chat */
 .chat-list { display: flex; flex-direction: column; gap: 10px; max-height: 56vh; overflow-y: auto;
   padding: 4px 2px 10px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }

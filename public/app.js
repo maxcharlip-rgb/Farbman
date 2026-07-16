@@ -224,6 +224,7 @@ function renderSubmitBar(d, disp) {
     if (!confirm('Submit your review? Your dispositions become visible to the other roles.')) return;
     try {
       await api('/api/submit', { method: 'POST', body: { reportId: d.report.id } });
+      launchBalloons({ count: 12 });
       renderProperty(d.property.id);
     } catch (e) { alert(e.message); }
   };
@@ -281,6 +282,7 @@ async function doSend(propertyId, rep) {
   if (!confirm(`Release the reviewed, signed-off report to ${who}?\n\n(Prototype: this records the release in the audit trail — it does not send a real email.)`)) return;
   try {
     await api('/api/send-to-owner', { method: 'POST', body: { propertyId } });
+    launchBalloons({ count: 20, goldBias: true });
     renderProperty(propertyId);
   } catch (e) { alert(e.message); }
 }
@@ -533,6 +535,7 @@ function renderSignoffBar(d) {
   $('#signBtn').onclick = async () => {
     try {
       await api('/api/signoff', { method: 'POST', body: { reportId: report.id } });
+      launchBalloons({ count: 26 });
       renderProperty(d.property.id);
     } catch (e) {
       if (e.data && e.data.open) alert('Blocked: ' + e.data.open.map((o) => o.title).join('; '));
@@ -879,6 +882,32 @@ function fmtTime(iso) {
 }
 function roleLabel(role) {
   return { Accountant: 'Property Accountant', Reviewer: 'Property Manager', Supervisor: 'Accounting Supervisor', 'Owner Representative': 'Owner Representative' }[role] || role;
+}
+
+
+// ── balloons — a small celebration when a report crosses a finish line ──
+const BLN_COLORS = ['#1f3a5f', '#2f6f8f', '#c8a45a', '#2f7a52', '#a23a32', '#6b3f8c'];
+function launchBalloons({ count = 16, goldBias = false } = {}) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = document.createElement('div');
+  box.className = 'bln-box';
+  box.setAttribute('aria-hidden', 'true');
+  let maxMs = 0;
+  for (let i = 0; i < count; i++) {
+    const b = document.createElement('div');
+    b.className = 'bln';
+    const color = goldBias && i % 2 ? '#c8a45a' : BLN_COLORS[i % BLN_COLORS.length];
+    const size = 34 + Math.random() * 30;
+    const dur = 2600 + Math.random() * 2200;
+    const delay = Math.random() * 700;
+    maxMs = Math.max(maxMs, dur + delay);
+    b.style.cssText = 'left:' + (Math.random() * 96 + 2) + 'vw;width:' + size + 'px;height:' + size * 1.18 +
+      'px;background:' + color + ';animation-duration:' + dur + 'ms,' + (1400 + Math.random() * 900) +
+      'ms;animation-delay:' + delay + 'ms,' + delay + 'ms;';
+    box.appendChild(b);
+  }
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), maxMs + 400);
 }
 
 // ── signed-in identity bar ─────────────────────────────

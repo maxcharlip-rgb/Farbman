@@ -37,6 +37,38 @@ const REPORTS = {
     reviewedDate: '2026-07-12',
     reviewDurationMinutes: 4,
     priorReportId: 'grand-river-42350-2026-05',
+    // Property Overview — the receivership attributes the company's monthly
+    // report format leads with (court, case, receiver, counsel, parties).
+    overview: {
+      address: '42350 Grand River Avenue, Novi, MI 48375',
+      propertyType: 'Retail',
+      yearBuilt: 1998,
+      rentableSqFt: 21450,
+      parking: 96,
+      dateAppointed: '2025-11-03',
+      court: 'Oakland County Circuit Court',
+      judge: 'Hon. Victoria A. Valentine',
+      caseNumber: '25CV118406',
+      receiver: 'NAI Farbman by its agent M. Kalil',
+      receiversCounsel: 'S. Berger of Maddin Hauser',
+      plaintiff: 'Midwest Capital Lending Trust 2019-B',
+      defendant: 'Grand River Retail Holdings, LLC',
+      managedBy: 'Farbman Group',
+    },
+    // Executive-summary operational sections, in the company's standard order.
+    operational: {
+      leasingActivity: 'The vacant suite is being actively marketed for lease; two tours were conducted this period.',
+      salesActivity: 'The building is simultaneously listed for sale on CoStar, Crexi, and LoopNet. One letter of intent is under review.',
+      marketingActivity: 'Listing refreshed on all three platforms; broker e-blast sent to 1,400 contacts on 6/12.',
+      significantTenantIssues: 'None to report.',
+      operationalIssues: 'Parking-lot light repairs completed 6/18 following the city notice; no open violations.',
+      capitalProjects: 'None to report.',
+      realEstateTaxes: 'Summer levy accrued at $30,000 pending the final bill from Oakland County; see Budget Variance Notes.',
+      insurance: 'Receiver-placed policy in force 1/26–12/26; premium paid current.',
+      legal: 'None to report.',
+      receivershipFees: 'Hourly rate of $200 for all receivership related matters.',
+      protectiveAdvances: 'None to report.',
+    },
     execSummary: {
       ytdNOI: -1139.15,
       ytdNOIVarianceToBudget: -55077.15,

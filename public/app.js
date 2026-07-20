@@ -328,46 +328,159 @@ function renderTrend(t) {
     </table></div>`;
 }
 
+// ── The company's Monthly Financial Report format (per the FG Ohio exemplar):
+// numbered sections — Executive Summary (overview, financial highlights,
+// operational items) → Financial Statements (income, budget comparison,
+// variance analytics, cash flow) → AR → Bank Reconciliation.
+function monthName(p) {
+  try { return new Date(p.month + '-15').toLocaleString('en-US', { month: 'long', year: 'numeric' }); }
+  catch { return p.label || ''; }
+}
+function moneyParen(n) { return n < 0 ? '($' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ')' : money(n); }
+
+// The three standard Financial Highlights paragraphs, in the company's exact language.
+function financialHighlights(r) {
+  const es = r.execSummary || {};
+  const m = monthName(r.period);
+  const year = (r.period.month || '').slice(0, 4);
+  const out = [];
+  if (r.balance && r.balance.endingCash != null) out.push(`As of ${m} the ending cash balance is: ${money(r.balance.endingCash)}.`);
+  if (es.monthTotalRevenue != null && es.monthRevenueVarianceToBudget != null) {
+    const v = es.monthRevenueVarianceToBudget, b = es.monthTotalRevenue - v;
+    out.push(`The ${m} Total Revenue was ${money(es.monthTotalRevenue)}. This reflects ${v >= 0 ? 'a favorable variance of ' + money(v) : 'an unfavorable variance of ' + moneyParen(v)} as it relates to the total revenue projection within the ${year} budget of ${money(b)}. See variance report for details.`);
+  }
+  if (es.monthOperatingExpenses != null && es.monthExpenseVarianceToBudget != null) {
+    const v = es.monthExpenseVarianceToBudget, b = es.monthOperatingExpenses - v; // over budget = unfavorable
+    out.push(`The ${m} Operating Expenses were ${money(es.monthOperatingExpenses)}. This reflects ${v <= 0 ? 'a favorable variance of ' + money(-v) : 'an unfavorable variance of ' + moneyParen(-v)} as it relates to the expense projection within the ${year} budget of ${money(b)}. See variance report for details.`);
+  }
+  if (es.ytdNOI != null && es.ytdNOIVarianceToBudget != null) {
+    const v = es.ytdNOIVarianceToBudget, b = es.ytdNOI - v;
+    out.push(`The Year-to-Date Net Operating Income through ${m} is ${money(es.ytdNOI)}. This reflects ${v >= 0 ? 'a favorable variance of ' + money(v) : 'an unfavorable variance of ' + moneyParen(v)} as it relates to the Year-to-Date Net Operating Income projections within the ${year} budget of ${money(b)}. See variance report for details.`);
+  }
+  return out;
+}
+
+const OPERATIONAL_ORDER = [
+  ['leasingActivity', 'Leasing Activity'], ['salesActivity', 'Sales Activity'], ['marketingActivity', 'Marketing Activity'],
+  ['significantTenantIssues', 'Significant Tenant Issues'], ['operationalIssues', 'Operational Issues'],
+  ['capitalProjects', 'Capital Projects'], ['realEstateTaxes', 'Real Estate Taxes'], ['insurance', 'Insurance'],
+  ['legal', 'Legal'], ['receivershipFees', 'Receivership Fees'], ['protectiveAdvances', 'Protective Advances'],
+];
+
 function renderReport(r) {
   const is = r.incomeStatement || {};
   const row = (label, amt, opt = {}) =>
     `<tr class="${opt.total ? 'total' : ''}"><td>${esc(label)}${opt.fn ? `<span class="fn">${opt.fn}</span>` : ''}</td><td class="amt ${amt < 0 ? 'neg' : ''}">${money(amt)}</td></tr>`;
   const es = r.execSummary || {};
   const ar = r.receivablesAging;
-  let h = '';
-  if (es.narrative || es.monthTotalRevenue != null) {
-    h += `<h3>Executive Summary</h3><p class="exec">`;
-    if (es.ytdNOI != null) h += `YTD NOI ${money(es.ytdNOI)}. `;
-    if (es.monthTotalRevenue != null) h += `Period revenue ${money(es.monthTotalRevenue)}, operating expenses ${money(es.monthOperatingExpenses)}. `;
-    if (es.occupancyPct != null) h += `Occupancy ${es.occupancyPct}%. `;
-    h += esc(es.narrative || '') + `</p>`;
+  const code = r.propertyId || '';
+  const finFooter = (name) => `<div class="yfoot">${esc(r.property)}${code ? ' (' + esc(code) + ')' : ''} · ${esc(name)} · Period = ${esc(monthName(r.period))} · Book = Cash</div>`;
+  let h = `<div class="rep-cover"><div class="rep-cover-t">Monthly Financial Report</div><div class="rep-cover-m">${esc(monthName(r.period))}</div></div>`;
+
+  // ── 1. Executive Summary ──
+  h += `<h3><span class="secnum">1.</span> Executive Summary</h3>`;
+  const ov = r.overview;
+  if (ov) {
+    const kv = [
+      ['Property', r.property], ['Address', ov.address], ['Property Type', ov.propertyType],
+      ['Year Built', ov.yearBuilt], ['Rentable Sq Feet', ov.rentableSqFt != null ? Number(ov.rentableSqFt).toLocaleString('en-US') : null],
+      ['Parking', ov.parking], ['Occupancy', es.occupancyPct != null ? es.occupancyPct + '%' : null],
+      ['Date Appointed', ov.dateAppointed], ['Court', ov.court], ['Judge', ov.judge], ['Case Number', ov.caseNumber],
+      ['Receiver', ov.receiver], ["Receiver's Counsel", ov.receiversCounsel], ['Plaintiff', ov.plaintiff], ['Defendant', ov.defendant],
+      ['Managed By', ov.managedBy], ['Property Manager', r.reviewedBy ? r.reviewedBy.name : null], ['Property Accountant', r.preparedBy ? r.preparedBy.name : null],
+    ].filter(([, v]) => v != null && v !== '');
+    h += `<h4 class="subhead">Property Overview</h4><div class="ovgrid">` +
+      kv.map(([k, v]) => `<div class="ovk">${esc(k)}:</div><div class="ovv">${esc(v)}</div>`).join('') + `</div>`;
   }
-  h += `<h3>Income Statement</h3><table class="fin">`;
+  const highlights = financialHighlights(r);
+  if (highlights.length) {
+    h += `<h4 class="subhead">Financial Highlights</h4>` + highlights.map((p) => `<p class="exec">${esc(p)}</p>`).join('');
+  } else if (es.narrative) {
+    h += `<p class="exec">${esc(es.narrative)}</p>`;
+  }
+  if (r.operational) {
+    for (const [key, label] of OPERATIONAL_ORDER) {
+      if (!r.operational[key]) continue;
+      h += `<div class="opline"><span class="opk">${esc(label)}:</span> ${esc(r.operational[key])}</div>`;
+    }
+  }
+  if (es.narrative && highlights.length) h += `<div class="opline"><span class="opk">Status:</span> ${esc(es.narrative)}</div>`;
+
+  // ── 2. Financial Statements ──
+  h += `<h3><span class="secnum">2.</span> Financial Statements</h3>`;
+  h += `<h4 class="subhead">Income Statement</h4><table class="fin">`;
+  h += `<tr class="colhead"><td></td><td class="amt">Period to Date</td></tr>`;
   (is.revenue || []).forEach((l) => (h += row(l.label, l.amount, { fn: l.footnote })));
-  h += row('Total Revenue', is.totalRevenue, { total: true });
+  h += row('TOTAL REVENUE', is.totalRevenue, { total: true });
   (is.expenses || []).forEach((l) => (h += row(l.label, l.amount, { fn: l.footnote })));
-  h += row('Total Expenses', is.totalExpenses, { total: true });
-  h += row('Net Operating Income (PTD)', is.noiPTD, { total: true });
-  h += `</table>`;
+  h += row('TOTAL EXPENSES', is.totalExpenses, { total: true });
+  h += row('NET OPERATING INCOME', is.noiPTD, { total: true });
+  h += `</table>` + finFooter('Income Statement');
+
+  // Budget Comparison — Actual | Budget | Variance | % Var (from the exec-summary variances)
+  const bc = [];
+  if (es.monthTotalRevenue != null && es.monthRevenueVarianceToBudget != null)
+    bc.push(['Total Revenue', es.monthTotalRevenue, es.monthTotalRevenue - es.monthRevenueVarianceToBudget, es.monthRevenueVarianceToBudget]);
+  if (es.monthOperatingExpenses != null && es.monthExpenseVarianceToBudget != null)
+    bc.push(['Total Expenses', es.monthOperatingExpenses, es.monthOperatingExpenses - es.monthExpenseVarianceToBudget, -es.monthExpenseVarianceToBudget]);
+  if (es.ytdNOI != null && es.ytdNOIVarianceToBudget != null)
+    bc.push(['YTD Net Operating Income', es.ytdNOI, es.ytdNOI - es.ytdNOIVarianceToBudget, es.ytdNOIVarianceToBudget]);
+  if (bc.length) {
+    h += `<h4 class="subhead">Budget Comparison</h4><table class="fin bc"><tr class="colhead"><td></td><td class="amt">Actual</td><td class="amt">Budget</td><td class="amt">Variance</td><td class="amt">% Var</td></tr>`;
+    for (const [label, act, bud, vr] of bc) {
+      const pct = bud ? (vr / Math.abs(bud)) * 100 : null;
+      h += `<tr><td>${esc(label)}</td><td class="amt">${money(act)}</td><td class="amt">${money(bud)}</td><td class="amt ${vr < 0 ? 'neg' : ''}">${moneyParen(vr)}</td><td class="amt ${vr < 0 ? 'neg' : ''}">${pct == null ? 'N/A' : pct.toFixed(1) + '%'}</td></tr>`;
+    }
+    h += `</table>` + finFooter('Budget Comparison');
+  }
+
+  // Variance Analytics — the budget-variance narrative belongs here per the format.
+  const bv = r.narrative && r.narrative.budgetVariance;
+  if (bv && (bv.revisedText || bv.text)) {
+    h += `<h4 class="subhead">Variance Analytics</h4><p class="exec">${esc(bv.revisedText || bv.text)}</p>`;
+  }
+
   if (r.balance) {
-    h += `<h3>Balance Summary</h3><table class="fin">`;
+    h += `<h4 class="subhead">Cash Flow</h4><table class="fin">`;
     h += row('Beginning Cash', r.balance.beginningCash);
     h += row('Net Cash Flow (Period)', r.balance.netCashFlow);
-    h += row('Ending Cash', r.balance.endingCash, { total: true });
-    h += `</table>`;
+    h += row('ENDING CASH', r.balance.endingCash, { total: true });
+    h += `</table>` + finFooter('Cash Flow Statement');
   }
+
+  // ── 4. Accounts Receivable ── (3. Tenancy is inserted when applicable)
   if (ar) {
-    h += `<h3>Receivables Aging</h3><table class="fin">`;
-    h += row('Current', ar.current) + row('0–30 Days', ar.d0_30) + row('30–60 Days', ar.d30_60) + row('60–90 Days', ar.d60_90) + row('90+ Days', ar.d90_plus) + row('Total', ar.total, { total: true });
-    h += `</table>`;
+    h += `<h3><span class="secnum">4.</span> Accounts Receivable</h3><table class="fin">`;
+    h += `<tr class="colhead"><td></td><td class="amt">Owed</td></tr>`;
+    h += row('Current', ar.current) + row('0–30 Days', ar.d0_30) + row('31–60 Days', ar.d30_60) + row('61–90 Days', ar.d60_90) + row('Over 90', ar.d90_plus) + row('TOTAL', ar.total, { total: true });
+    h += `</table>` + finFooter('Aging Status');
+    const arn = r.narrative && r.narrative.arNotes;
+    if (arn && (arn.revisedText || arn.text)) h += `<div class="opline"><span class="opk">AR Notes:</span> ${esc(arn.revisedText || arn.text)}</div>`;
   }
-  // Narrative notes — where reviewers spend most of their time.
-  for (const sec of Object.values(r.narrative || {})) {
+
+  // ── 5. Bank Reconciliation ──
+  if (r.bankRec) {
+    h += `<h3><span class="secnum">5.</span> Bank Reconciliation</h3>`;
+    const cs = r.bankRec.checkSequence;
+    if (cs) {
+      h += `<table class="fin">`;
+      h += `<tr><td>Checks issued</td><td class="amt">${(cs.issued || []).length ? cs.issued[0] + '–' + cs.issued[cs.issued.length - 1] : '—'}</td></tr>`;
+      h += `<tr><td>Cleared checks</td><td class="amt">${(cs.cleared || []).join(', ') || '—'}</td></tr>`;
+      h += `<tr><td>Outstanding checks</td><td class="amt">${(cs.outstanding || []).join(', ') || 'None'}</td></tr>`;
+      if (r.balance) h += `<tr class="total"><td>Reconciled Balance per G/L</td><td class="amt">${money(r.balance.endingCash)}</td></tr>`;
+      h += `</table>`;
+    }
+    if (r.bankRec.note) h += `<div class="note-line"><strong>Bank rec note:</strong> ${esc(r.bankRec.note)}</div>`;
+    h += finFooter('Bank Reconciliation Report');
+  }
+
+  // Any narrative sections not already placed above
+  for (const [key, sec] of Object.entries(r.narrative || {})) {
+    if (key === 'budgetVariance' || key === 'arNotes') continue;
     const text = sec.revisedText || sec.text;
     if (!text) continue;
-    h += `<h3>${esc(sec.title)}</h3><p class="exec">${esc(text)}</p>`;
+    h += `<h4 class="subhead">${esc(sec.title)}</h4><p class="exec">${esc(text)}</p>`;
   }
-  if (r.bankRec && r.bankRec.note) h += `<div class="note-line"><strong>Bank rec note:</strong> ${esc(r.bankRec.note)}</div>`;
   if (r.footnotes) h += Object.entries(r.footnotes).map(([k, v]) => `<div class="note-line"><span class="fn">${esc(k)}</span> ${esc(v)}</div>`).join('');
   $('#reportView').innerHTML = h;
 }

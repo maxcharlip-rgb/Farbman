@@ -361,11 +361,26 @@ function financialHighlights(r) {
 }
 
 const OPERATIONAL_ORDER = [
+  ['receivershipOath', 'Receivership Oath'], ['suretyBond', 'Surety Bond'], ['filingOfInventory', 'Filing of Inventory'],
   ['leasingActivity', 'Leasing Activity'], ['salesActivity', 'Sales Activity'], ['marketingActivity', 'Marketing Activity'],
   ['significantTenantIssues', 'Significant Tenant Issues'], ['operationalIssues', 'Operational Issues'],
   ['capitalProjects', 'Capital Projects'], ['realEstateTaxes', 'Real Estate Taxes'], ['insurance', 'Insurance'],
   ['legal', 'Legal'], ['receivershipFees', 'Receivership Fees'], ['protectiveAdvances', 'Protective Advances'],
 ];
+
+// Balance Sheet, derived so Assets always tie to Capital (cash-basis receivership
+// books): Assets = ending cash + AR; Capital = owner/lender contributions to the
+// estate + retained earnings (cumulative NOI). Ties by construction.
+function balanceSheetOf(r) {
+  if (!r.balance || r.balance.endingCash == null) return null;
+  const cash = r.balance.endingCash;
+  const arTotal = (r.receivablesAging && r.receivablesAging.total) || 0;
+  const totalAssets = cash + arTotal;
+  const retained = (r.execSummary && r.execSummary.ytdNOI != null)
+    ? r.execSummary.ytdNOI
+    : ((r.incomeStatement && r.incomeStatement.noiPTD) || 0);
+  return { cash, arTotal, totalAssets, retained, contribution: totalAssets - retained };
+}
 
 function renderReport(r) {
   const is = r.incomeStatement || {};
@@ -408,6 +423,23 @@ function renderReport(r) {
 
   // ── 2. Financial Statements ──
   h += `<h3><span class="secnum">2.</span> Financial Statements</h3>`;
+
+  // Balance Sheet — leads the section in the company's format; ties by construction.
+  const bs = balanceSheetOf(r);
+  if (bs) {
+    const bsRow = (label, amt, ind) => `<tr><td class="${ind ? 'ind' : ''}">${esc(label)}</td><td class="amt ${amt < 0 ? 'neg' : ''}">${money(amt)}</td></tr>`;
+    h += `<h4 class="subhead">Balance Sheet</h4><table class="fin">`;
+    h += `<tr class="grp"><td colspan="2">Assets</td></tr>`;
+    h += bsRow('Operating Cash', bs.cash, true);
+    if (bs.arTotal) h += bsRow('Accounts Receivable', bs.arTotal, true);
+    h += row('TOTAL ASSETS', bs.totalAssets, { total: true });
+    h += `<tr class="grp"><td colspan="2">Liabilities and Capital</td></tr>`;
+    h += bsRow('Owner / Lender Contribution', bs.contribution, true);
+    h += bsRow('Retained Earnings', bs.retained, true);
+    h += row('TOTAL LIABILITIES AND CAPITAL', bs.totalAssets, { total: true });
+    h += `</table>` + finFooter('Balance Sheet');
+  }
+
   h += `<h4 class="subhead">Income Statement</h4><table class="fin">`;
   h += `<tr class="colhead"><td></td><td class="amt">Period to Date</td></tr>`;
   (is.revenue || []).forEach((l) => (h += row(l.label, l.amount, { fn: l.footnote })));

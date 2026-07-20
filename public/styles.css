@@ -136,6 +136,8 @@ table.fin td { padding: 5px 2px; border-bottom: 1px solid #f0eee8; }
 table.fin td.amt { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.fin tr.total td { font-weight: 700; border-top: 1.5px solid var(--line-strong); border-bottom: none; }
 table.fin tr.total td:first-child { color: var(--navy); }
+table.fin tr.grp td { font-weight: 700; color: var(--navy); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; padding-top: 9px; border-bottom: none; }
+table.fin td.ind { padding-left: 16px; }
 .neg { color: var(--red); } .fn { color: var(--accent); font-size: 10px; vertical-align: super; }
 .note-line { font-size: 12px; color: var(--ink-soft); background: var(--slate-bg); padding: 8px 10px; border-radius: 6px; margin-top: 8px; }
 

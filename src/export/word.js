@@ -76,13 +76,30 @@ function finTable(rows) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder, insideVertical: noBorder, insideHorizontal: hair },
-    rows: rows.map((r) => new TableRow({
-      children: [
-        cell([runs(r.label, { size: 20, bold: !!r.total, color: r.total ? NAVY : INK })], { width: 68 }),
+    rows: rows.map((r) => {
+      if (r.group) {
+        return new TableRow({ children: [
+          cell([runs(String(r.label).toUpperCase(), { size: 16, bold: true, color: NAVY, characterSpacing: 10 })], { width: 68 }),
+          cell([runs('', { size: 20 })], { align: 'right', width: 32 }),
+        ] });
+      }
+      return new TableRow({ children: [
+        cell([runs((r.indent ? '   ' : '') + r.label, { size: 20, bold: !!r.total, color: r.total ? NAVY : INK })], { width: 68 }),
         cell([moneyRun(r.amount, !!r.total)], { align: 'right', width: 32 }),
-      ],
-    })),
+      ] });
+    }),
   });
+}
+// Balance Sheet, derived so Assets tie to Capital (mirrors public/app.js).
+function balanceSheetOf(r) {
+  if (!r.balance || r.balance.endingCash == null) return null;
+  const cash = r.balance.endingCash;
+  const arTotal = (r.receivablesAging && r.receivablesAging.total) || 0;
+  const totalAssets = cash + arTotal;
+  const retained = (r.execSummary && r.execSummary.ytdNOI != null)
+    ? r.execSummary.ytdNOI
+    : ((r.incomeStatement && r.incomeStatement.noiPTD) || 0);
+  return { cash, arTotal, totalAssets, retained, contribution: totalAssets - retained };
 }
 
 const moneyParen = (n) => (n < 0 ? '($' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ')' : money(n));
@@ -119,6 +136,7 @@ function financialHighlights(r) {
   return out;
 }
 const OPERATIONAL_ORDER = [
+  ['receivershipOath', 'Receivership Oath'], ['suretyBond', 'Surety Bond'], ['filingOfInventory', 'Filing of Inventory'],
   ['leasingActivity', 'Leasing Activity'], ['salesActivity', 'Sales Activity'], ['marketingActivity', 'Marketing Activity'],
   ['significantTenantIssues', 'Significant Tenant Issues'], ['operationalIssues', 'Operational Issues'],
   ['capitalProjects', 'Capital Projects'], ['realEstateTaxes', 'Real Estate Taxes'], ['insurance', 'Insurance'],
@@ -216,6 +234,22 @@ function buildChildren(report, ctx) {
 
   // ── 2. Financial Statements ───────────────────────────
   children.push(heading('2. Financial Statements'));
+  const bs = balanceSheetOf(report);
+  if (bs) {
+    children.push(subhead('Balance Sheet'));
+    const bsRows = [
+      { label: 'Assets', group: true },
+      { label: 'Operating Cash', amount: bs.cash, indent: true },
+    ];
+    if (bs.arTotal) bsRows.push({ label: 'Accounts Receivable', amount: bs.arTotal, indent: true });
+    bsRows.push({ label: 'TOTAL ASSETS', amount: bs.totalAssets, total: true });
+    bsRows.push({ label: 'Liabilities and Capital', group: true });
+    bsRows.push({ label: 'Owner / Lender Contribution', amount: bs.contribution, indent: true });
+    bsRows.push({ label: 'Retained Earnings', amount: bs.retained, indent: true });
+    bsRows.push({ label: 'TOTAL LIABILITIES AND CAPITAL', amount: bs.totalAssets, total: true });
+    children.push(finTable(bsRows));
+    children.push(yardiFooter(report, 'Balance Sheet'));
+  }
   if (is.revenue || is.expenses) {
     children.push(subhead('Income Statement'));
     const rows = [];

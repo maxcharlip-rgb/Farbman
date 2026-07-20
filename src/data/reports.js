@@ -57,6 +57,9 @@ const REPORTS = {
     },
     // Executive-summary operational sections, in the company's standard order.
     operational: {
+      receivershipOath: 'The Receivership Order was entered on 11/3/2025, appointing NAI Farbman through its authorized agent as Receiver over the real and personal property. The Receiver was authorized to take possession, collect rents, deposit all estate funds into a separate account with full contemporaneous record-keeping, avoid any conflict of interest, and otherwise act in the best interests of the estate under Michigan law and the Oakland County Circuit Court local rules.',
+      suretyBond: 'A surety bond in the amount of $100,000 has been filed.',
+      filingOfInventory: 'An inventory of personal property has been completed and filed with the Court.',
       leasingActivity: 'The vacant suite is being actively marketed for lease; two tours were conducted this period.',
       salesActivity: 'The building is simultaneously listed for sale on CoStar, Crexi, and LoopNet. One letter of intent is under review.',
       marketingActivity: 'Listing refreshed on all three platforms; broker e-blast sent to 1,400 contacts on 6/12.',

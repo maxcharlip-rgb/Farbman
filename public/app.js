@@ -165,11 +165,13 @@ async function renderProperty(id) {
             <div class="muted sm">Prepared by ${esc(report.preparedBy ? report.preparedBy.name : '—')}${report.reviewedBy ? ' · Reviewed by ' + esc(report.reviewedBy.name) : ''}</div>
           </div>
           <div class="report-head-right">
-            <span class="status ${report.status === 'signed_off' ? 'signed_off' : 'draft'}">${esc((report.status || '').replace(/_/g, ' '))}</span>
+            <span class="status ${d.sent || d.signoff ? 'signed_off' : 'draft'}">${d.sent ? 'released to owner rep' : d.signoff ? 'signed off' : esc((report.status || '').replace(/_/g, ' '))}</span>
             <a class="run-btn ghost export-btn" href="/api/export/${esc(property.id)}?role=${encodeURIComponent(ROLE)}" download title="Download this report as a Word document you can edit and send out">⤓ Export Word</a>
           </div>
         </div>
-        <div class="draft-note">You're reviewing as <strong>${esc(roleLabel(ROLE))}</strong>. Your dispositions are private until you submit. · Sample data, prototype demo only.</div>
+        <div class="draft-note">${canDispo
+          ? `You're reviewing as <strong>${esc(roleLabel(ROLE))}</strong>. Your dispositions are private until you submit. · Sample data, prototype demo only.`
+          : `Delivered to you as <strong>${esc(roleLabel(ROLE))}</strong> — read-only. · Sample data, prototype demo only.`}</div>
         <div id="reportView" class="report-view"></div>
         <div id="trendView"></div>
       </section>

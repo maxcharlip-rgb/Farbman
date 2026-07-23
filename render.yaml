@@ -26,6 +26,16 @@ services:
     #   # Enable Claude-written reviewer briefings (set the secret value in the dashboard):
     #   - key: ANTHROPIC_API_KEY
     #     sync: false
+    #   # Real email for @mention pings WITHOUT Azure — plain SMTP (e.g. a Gmail
+    #   # app password: Google Account → Security → 2-Step Verification → App
+    #   # passwords). Set these three in the dashboard and every ping sends real
+    #   # mail to PING_TO. Set secret values in the dashboard, not here.
+    #   - key: SMTP_USER
+    #     sync: false
+    #   - key: SMTP_PASS
+    #     sync: false
+    #   - key: PING_TO
+    #     sync: false
     #   # Real Outlook pings for @mentions in team chat (Azure app registration
     #   # with the Mail.Send application permission — created once by IT).
     #   # Without these, pings are recorded in-app as "demo".

@@ -112,3 +112,16 @@ public/                    Frontend (portfolio, workspace, calibration, audit, i
 - Judgment-heavy receivership matters (going concern, valuation, lienholder distributions,
   court reporting) are deliberately out of scope and route to humans.
 - Sample data only here. Real reports require data-handling controls first.
+
+## Real email for @mention pings (demo)
+
+No Azure needed — plain SMTP. In Render → Environment add:
+
+- `SMTP_USER` — the Gmail address to send from
+- `SMTP_PASS` — a Gmail **app password** (Google Account → Security → 2-Step Verification → App passwords)
+- `PING_TO` — the inbox that receives every ping (e.g. your work email)
+
+Saving env vars triggers a redeploy (~1 min). Then verify with
+`curl -X POST https://<host>/api/ping/test` — HTTP 200 means the mail went out,
+and every `@mention` in team chat emails `PING_TO` for real (chip shows
+"✉ emailed @…"). Without these vars pings stay recorded as "demo".

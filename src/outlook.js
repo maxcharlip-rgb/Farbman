@@ -22,6 +22,8 @@ const DIRECTORY = [
   { handle: 'ownerrep', name: 'Owner Representative', role: 'Owner Representative', email: 'ownerrep@farbman.example' },
 ];
 
+const email = require('./email');
+
 const configured = () =>
   !!(process.env.MS_TENANT_ID && process.env.MS_CLIENT_ID && process.env.MS_CLIENT_SECRET && process.env.OUTLOOK_SENDER);
 
@@ -62,7 +64,20 @@ async function graphToken() {
 
 /** Ping one person about a chat mention. Returns { to, status } — never throws. */
 async function ping(person, { from, text, propertyName }) {
-  if (!configured()) return { to: person.handle, email: person.email, status: 'simulated' };
+  // Send chain: Microsoft Graph when the Azure registration is configured;
+  // otherwise plain SMTP (see src/email.js — the demo-friendly real-mail path);
+  // otherwise record the ping as a demo simulation. Never throws.
+  if (!configured()) {
+    if (email.configured()) {
+      try {
+        const status = await email.sendPing({ handle: person.handle, from, text, propertyName });
+        return { to: person.handle, email: email.pingTo(), status, via: 'email' };
+      } catch (e) {
+        return { to: person.handle, email: email.pingTo(), status: 'error ' + e.message, via: 'email' };
+      }
+    }
+    return { to: person.handle, email: person.email, status: 'simulated' };
+  }
   try {
     const token = await graphToken();
     const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(process.env.OUTLOOK_SENDER)}/sendMail`, {

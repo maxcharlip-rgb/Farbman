@@ -273,6 +273,17 @@ app.post('/api/properties/sync', (req, res) => {
 });
 
 // ── Data-source connector (live CSV URL and/or watched folder) ─────────────
+// Demo-day check: fire one real ping email (503 until SMTP env vars are set).
+app.post('/api/ping/test', async (req, res) => {
+  const { by } = actor(req);
+  if (outlook.configured() === false && !require('./src/email').configured())
+    return res.status(503).json({ error: 'Email is not configured — set SMTP_USER and SMTP_PASS (and optionally PING_TO) in the environment.' });
+  const r = await outlook.ping({ handle: 'test', name: 'Test', role: 'Reviewer', email: null }, {
+    from: by, text: 'Test ping from Farbman FirstPass — you are all set for the demo.', propertyName: null,
+  });
+  res.status(/^sent$/.test(r.status) ? 200 : 502).json({ ping: r });
+});
+
 app.get('/api/connector', (req, res) => {
   connector.maybePoll(); // opening the page refreshes from the source (non-blocking)
   res.json(connector.status());

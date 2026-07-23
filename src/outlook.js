@@ -19,6 +19,7 @@ const DIRECTORY = [
   { handle: 'accountant', name: 'A. Accountant', role: 'Accountant', email: 'accountant@farbman.example' },
   { handle: 'manager', name: 'L. Reviewer', role: 'Reviewer', email: 'manager@farbman.example' },
   { handle: 'supervisor', name: 'D. Okafor', role: 'Supervisor', email: 'supervisor@farbman.example' },
+  { handle: 'ownerrep', name: 'Owner Representative', role: 'Owner Representative', email: 'ownerrep@farbman.example' },
 ];
 
 const configured = () =>

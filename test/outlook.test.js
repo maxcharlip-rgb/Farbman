@@ -6,7 +6,7 @@ const { parseMentions, ping, configured } = require('../src/outlook');
 
 test('parseMentions finds handles, dedupes, and expands @all', () => {
   assert.deepStrictEqual(parseMentions('hey @supervisor look at this @supervisor').map((p) => p.handle), ['supervisor']);
-  assert.deepStrictEqual(parseMentions('@ALL please review').map((p) => p.handle).sort(), ['accountant', 'manager', 'supervisor']);
+  assert.deepStrictEqual(parseMentions('@ALL please review').map((p) => p.handle).sort(), ['accountant', 'manager', 'ownerrep', 'supervisor']);
   assert.deepStrictEqual(parseMentions('no mentions here'), []);
   assert.deepStrictEqual(parseMentions('@unknownperson hi'), []);
 });

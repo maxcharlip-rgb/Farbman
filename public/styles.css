@@ -396,3 +396,17 @@ table.trend td.tspark { padding: 2px 8px; }
   .report-head { flex-wrap: wrap; }
   .report-head-right { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
 }
+
+/* ── chat: @ picker + direct messages ── */
+.chat-input-wrap { position: relative; flex: 1; display: flex; }
+.chat-input-wrap input { width: 100%; }
+.mention-menu { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 340px; background: #fff;
+  border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 10px 30px rgba(22,27,34,.14);
+  padding: 4px; z-index: 40; }
+.mention-menu.hidden { display: none; }
+.mention-item { display: flex; align-items: baseline; gap: 10px; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; }
+.mention-item.active, .mention-item:hover { background: #f4f1ea; }
+.mention-item .mi-label { font-weight: 600; color: var(--ink); }
+.mention-item .mi-hint { margin-left: auto; font-size: 11px; color: var(--muted); }
+.dm-chip { display: inline-block; margin-top: 4px; font-size: 11px; color: #7a5b18; background: #faf3e3;
+  border: 1px solid #ecd9a8; border-radius: 999px; padding: 2px 9px; }

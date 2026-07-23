@@ -711,7 +711,10 @@ async function renderChat() {
           <option value="">No property tag</option>
           ${props.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}
         </select>
-        <input id="chatText" type="text" maxlength="2000" placeholder="Message the team… (@accountant @manager @supervisor pings them in Outlook)" autocomplete="off" />
+        <div class="chat-input-wrap">
+          <input id="chatText" type="text" maxlength="2000" placeholder="Message the team… type @ to send it to one person only" autocomplete="off" />
+          <div id="mentionMenu" class="mention-menu hidden"></div>
+        </div>
         <button class="run-btn" type="submit">Send</button>
       </form>
     </div>`;
@@ -733,7 +736,8 @@ async function renderChat() {
       row.innerHTML = `
         <div class="chat-meta"><span class="chat-who chat-${esc(m.role).replace(/\s+/g, '-')}">${esc(roleLabel(m.role))}</span>
           <span class="muted sm">${esc(m.by)} · ${fmtTime(m.at)}</span></div>
-        <div class="chat-text">${esc(m.text).replace(/@(accountant|manager|supervisor|all)/gi, '<span class="mention">@$1</span>')}${m.propertyId ? ` <a class="chat-tag" href="#/property/${esc(m.propertyId)}">${esc(propName(m.propertyId))}</a>` : ''}</div>
+        <div class="chat-text">${esc(m.text).replace(/@(accountant|manager|supervisor|ownerrep|all)/gi, '<span class="mention">@$1</span>')}${m.propertyId ? ` <a class="chat-tag" href="#/property/${esc(m.propertyId)}">${esc(propName(m.propertyId))}</a>` : ''}</div>
+        ${m.to ? `<div class="dm-chip" title="Direct message — nobody else can see it">🔒 Private · ${m.to.map(roleLabel).join(' + ')}</div>` : ''}
         ${m.pings && m.pings.length ? `<div class="ping-row">${m.pings.map((p) => `<span class="ping-chip" title="${esc(p.email)}">✉ pinged @${esc(p.to)} via Outlook${p.status === 'simulated' ? ' · demo' : p.status === 'sent' ? '' : ' · ' + esc(p.status)}</span>`).join('')}</div>` : ''}`;
       el.appendChild(row);
       CHAT_LAST_ID = m.id;
@@ -752,6 +756,54 @@ async function renderChat() {
       renderMsgs([r.message], true);
     } catch (err) { alert(err.message); }
   };
+
+  // ── @ picker — pops up while typing @, shows who a message can go to ──
+  const MENTION_DIR = [
+    { handle: 'accountant', label: 'Property Accountant', hint: 'only they see it · Outlook ping' },
+    { handle: 'manager', label: 'Property Manager', hint: 'only they see it · Outlook ping' },
+    { handle: 'supervisor', label: 'Accounting Supervisor', hint: 'only they see it · Outlook ping' },
+    { handle: 'ownerrep', label: 'Owner Representative', hint: 'only they see it' },
+    { handle: 'all', label: 'Everyone', hint: 'whole team sees it' },
+  ];
+  const menu = $('#mentionMenu');
+  const input = $('#chatText');
+  let menuItems = [];
+  let menuIdx = 0;
+  const closeMenu = () => { menu.classList.add('hidden'); menuItems = []; };
+  const openMenu = (partial) => {
+    menuItems = MENTION_DIR.filter((d) => d.handle.startsWith(partial));
+    if (!menuItems.length) return closeMenu();
+    menuIdx = 0;
+    menu.innerHTML = menuItems.map((d, i) => `
+      <div class="mention-item ${i === 0 ? 'active' : ''}" data-handle="${d.handle}">
+        <span class="mention">@${d.handle}</span><span class="mi-label">${d.label}</span><span class="mi-hint">${d.hint}</span>
+      </div>`).join('');
+    menu.classList.remove('hidden');
+    $$('.mention-item', menu).forEach((el) => {
+      el.onmousedown = (e) => { e.preventDefault(); pick(el.dataset.handle); };
+    });
+  };
+  const pick = (handle) => {
+    input.value = input.value.replace(/@[a-z]*$/i, '@' + handle + ' ');
+    closeMenu();
+    input.focus();
+  };
+  input.oninput = () => {
+    const m = input.value.match(/(^|\s)@([a-z]*)$/i);
+    if (m) openMenu(m[2].toLowerCase()); else closeMenu();
+  };
+  input.onkeydown = (e) => {
+    if (menu.classList.contains('hidden')) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      menuIdx = (menuIdx + (e.key === 'ArrowDown' ? 1 : menuItems.length - 1)) % menuItems.length;
+      $$('.mention-item', menu).forEach((el, i) => el.classList.toggle('active', i === menuIdx));
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault(); e.stopPropagation();
+      pick(menuItems[menuIdx].handle);
+    } else if (e.key === 'Escape') closeMenu();
+  };
+  input.onblur = () => setTimeout(closeMenu, 150);
 
   // Poll for new messages while the page is open.
   CHAT_TIMER = setInterval(async () => {

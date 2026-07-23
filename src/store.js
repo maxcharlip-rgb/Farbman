@@ -196,13 +196,16 @@ function dispositionsView(reportId, viewerRole) {
 // ── Team chat (cross-department; internal roles only — enforced at the API) ──
 const CHAT_CAP = 500; // keep the store bounded
 
-function addChatMessage({ by, role, text, propertyId }) {
+function addChatMessage({ by, role, text, propertyId, to = null }) {
   const s = load();
   const msg = {
     id: `msg_${Date.now().toString(36)}_${s.chat.length}`,
     by, role,
     text: String(text).slice(0, 2000),
     propertyId: propertyId || null,
+    // Direct message: `to` lists the roles who can see it (sender included).
+    // null → visible to the whole team.
+    to: Array.isArray(to) && to.length ? to : null,
     at: new Date().toISOString(),
   };
   s.chat.push(msg);
@@ -219,9 +222,12 @@ function setChatPings(messageId, pings) {
   return m;
 }
 
-/** Latest messages (chronological). Pass `after` (a message id) to get only newer ones. */
-function getChat({ limit = 200, after = null } = {}) {
-  const all = load().chat;
+/** Latest messages (chronological), as seen by `role`: team messages plus any
+ * direct messages that role sent or received. Pass `after` (a message id) to
+ * get only newer ones. */
+function getChat({ limit = 200, after = null, role = null } = {}) {
+  const visible = (m) => !m.to || m.role === role || m.to.includes(role);
+  const all = load().chat.filter(visible);
   if (after) {
     const i = all.findIndex((m) => m.id === after);
     if (i >= 0) return all.slice(i + 1);

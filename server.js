@@ -332,7 +332,8 @@ app.get('/api/trend/:propertyId', (req, res) => {
 // (Review privacy still holds: unsubmitted dispositions and unreleased reports
 // never appear in chat — only what people choose to write.)
 app.get('/api/chat', (req, res) => {
-  res.json({ messages: store.getChat({ after: req.query.after || null }) });
+  const { role } = actor(req);
+  res.json({ messages: store.getChat({ after: req.query.after || null, role }) });
 });
 app.post('/api/chat', async (req, res) => {
   const { text, propertyId } = req.body || {};
@@ -341,9 +342,13 @@ app.post('/api/chat', async (req, res) => {
   if (!trimmed) return res.status(400).json({ error: 'message text is required' });
   const prop = propertyId ? store.getProperty(propertyId) : null;
   if (propertyId && !prop) return res.status(400).json({ error: 'unknown propertyId' });
-  const message = store.addChatMessage({ by, role, text: trimmed, propertyId });
-  // @mentions → Outlook ping (real Graph mail when configured; recorded either way)
-  const mentioned = outlook.parseMentions(trimmed).filter((p) => p.role !== role); // don't ping yourself
+  // @someone → a direct message only they (and you) can see; @all or no
+  // mention → the whole team. The Outlook ping rides along either way.
+  const allMentioned = outlook.parseMentions(trimmed);
+  const isPublic = /@all\b/i.test(trimmed) || allMentioned.length === 0;
+  const to = isPublic ? null : [...new Set([role, ...allMentioned.map((p) => p.role)])];
+  const message = store.addChatMessage({ by, role, text: trimmed, propertyId, to });
+  const mentioned = allMentioned.filter((p) => p.role !== role); // don't ping yourself
   if (mentioned.length) {
     const pings = await Promise.all(mentioned.map((p) => outlook.ping(p, { from: by, text: trimmed, propertyName: prop ? prop.name : null })));
     store.setChatPings(message.id, pings);

@@ -68,6 +68,18 @@ test('an imported draft carries its owner rep onto the property (release step wo
   assert.strictEqual(prop.ownerRep.email, 'assetmanager@gallerialending.example');
 });
 
+
+test('a direct message is visible only to its sender and recipients', () => {
+  store.addChatMessage({ by: 'L. Reviewer', role: 'Reviewer', text: 'team-wide note' });
+  store.addChatMessage({ by: 'L. Reviewer', role: 'Reviewer', text: 'just for you @accountant', to: ['Reviewer', 'Accountant'] });
+  const texts = (role) => store.getChat({ role }).map((m) => m.text);
+  assert.ok(texts('Accountant').includes('just for you @accountant'));
+  assert.ok(texts('Reviewer').includes('just for you @accountant'));
+  assert.ok(!texts('Supervisor').includes('just for you @accountant'));
+  assert.ok(texts('Supervisor').includes('team-wide note'));
+  assert.ok(!texts('Owner Representative').includes('just for you @accountant'));
+});
+
 after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
 
 test('re-running the first-pass review invalidates a prior sign-off', () => {

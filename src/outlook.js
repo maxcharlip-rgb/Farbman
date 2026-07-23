@@ -16,6 +16,7 @@
 
 // Who can be @mentioned. Handles are stable; names/emails are the demo personas.
 const DIRECTORY = [
+  { handle: 'max', name: 'Max Charlip', role: 'Max Charlip', email: 'max@farbman.example' },
   { handle: 'accountant', name: 'A. Accountant', role: 'Accountant', email: 'accountant@farbman.example' },
   { handle: 'manager', name: 'L. Reviewer', role: 'Reviewer', email: 'manager@farbman.example' },
   { handle: 'supervisor', name: 'D. Okafor', role: 'Supervisor', email: 'supervisor@farbman.example' },

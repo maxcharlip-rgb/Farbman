@@ -119,7 +119,7 @@ No Azure needed — plain SMTP. In Render → Environment add:
 
 - `SMTP_USER` — the Gmail address to send from
 - `SMTP_PASS` — a Gmail **app password** (Google Account → Security → 2-Step Verification → App passwords)
-- `PING_TO` — the inbox that receives every ping (e.g. your work email)
+- `PING_TO` — optional; where pings land. Leave it unset and they go to `SMTP_USER` itself
 
 Saving env vars triggers a redeploy (~1 min). Then verify with
 `curl -X POST https://<host>/api/ping/test` — HTTP 200 means the mail went out,

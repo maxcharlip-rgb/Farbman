@@ -736,7 +736,7 @@ async function renderChat() {
       row.innerHTML = `
         <div class="chat-meta"><span class="chat-who chat-${esc(m.role).replace(/\s+/g, '-')}">${esc(roleLabel(m.role))}</span>
           <span class="muted sm">${esc(m.by)} · ${fmtTime(m.at)}</span></div>
-        <div class="chat-text">${esc(m.text).replace(/@(accountant|manager|supervisor|ownerrep|all)/gi, '<span class="mention">@$1</span>')}${m.propertyId ? ` <a class="chat-tag" href="#/property/${esc(m.propertyId)}">${esc(propName(m.propertyId))}</a>` : ''}</div>
+        <div class="chat-text">${esc(m.text).replace(/@(accountant|manager|supervisor|ownerrep|max|all)/gi, '<span class="mention">@$1</span>')}${m.propertyId ? ` <a class="chat-tag" href="#/property/${esc(m.propertyId)}">${esc(propName(m.propertyId))}</a>` : ''}</div>
         ${m.to ? `<div class="dm-chip" title="Direct message — nobody else can see it">🔒 Private · ${m.to.map(roleLabel).join(' + ')}</div>` : ''}
         ${m.pings && m.pings.length ? `<div class="ping-row">${m.pings.map((p) => `<span class="ping-chip" title="${esc(p.email)}">${p.status === 'sent' ? `✉ emailed @${esc(p.to)}` : `✉ pinged @${esc(p.to)} via Outlook${p.status === 'simulated' ? ' · demo' : ' · ' + esc(p.status)}`}</span>`).join('')}</div>` : ''}`;
       el.appendChild(row);
@@ -759,6 +759,7 @@ async function renderChat() {
 
   // ── @ picker — pops up while typing @, shows who a message can go to ──
   const MENTION_DIR = [
+    { handle: 'max', label: 'Max Charlip', hint: 'only Max sees it · real email' },
     { handle: 'accountant', label: 'Property Accountant', hint: 'only they see it · Outlook ping' },
     { handle: 'manager', label: 'Property Manager', hint: 'only they see it · Outlook ping' },
     { handle: 'supervisor', label: 'Accounting Supervisor', hint: 'only they see it · Outlook ping' },

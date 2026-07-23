@@ -26,6 +26,12 @@ const resendConfigured = () => !!(process.env.RESEND_API_KEY && process.env.PING
 const smtpConfigured = () => !!(process.env.SMTP_USER && process.env.SMTP_PASS);
 const configured = () => resendConfigured() || smtpConfigured();
 
+// Circuit breaker: once the network hard-fails (blocked SMTP port, no route),
+// remember it and fail instantly for a while instead of stalling every send.
+let _dead = null; // { error, until }
+const netDead = () => _dead && Date.now() < _dead.until;
+const markDead = (e) => { _dead = { error: e.message, until: Date.now() + 10 * 60 * 1000 }; };
+
 let _transport = null;
 function transport() {
   if (_transport) return _transport;
@@ -80,14 +86,20 @@ const htmlFor = ({ handle, from, text, propertyName }) =>
 /** Send one @mention ping. Returns 'sent' or throws (caller records the error). */
 async function sendPing({ handle, from, text, propertyName }) {
   if (resendConfigured()) return sendViaResend({ handle, from, text, propertyName });
-  const info = await transport().sendMail({
-    from: `"Farbman FirstPass" <${process.env.SMTP_USER}>`,
-    to: pingTo(),
-    subject: subjectFor({ handle, from, propertyName }),
-    text: textFor({ handle, from, text, propertyName }),
-    html: htmlFor({ handle, from, text, propertyName }),
-  });
-  return info && info.accepted && info.accepted.length ? 'sent' : 'not accepted';
+  if (netDead()) throw new Error(`SMTP unreachable from this host (cached) — ${_dead.error}`);
+  try {
+    const info = await transport().sendMail({
+      from: `"Farbman FirstPass" <${process.env.SMTP_USER}>`,
+      to: pingTo(),
+      subject: subjectFor({ handle, from, propertyName }),
+      text: textFor({ handle, from, text, propertyName }),
+      html: htmlFor({ handle, from, text, propertyName }),
+    });
+    return info && info.accepted && info.accepted.length ? 'sent' : 'not accepted';
+  } catch (e) {
+    if (/timeout|ENETUNREACH|ECONNREFUSED|EHOSTUNREACH/i.test(e.message)) markDead(e);
+    throw e;
+  }
 }
 
 function esc(s) {

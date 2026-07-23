@@ -136,6 +136,11 @@ function parseCsv(text) {
     reviewedDate: meta.reviewed_date || null,
     reviewDurationMinutes: meta.review_minutes != null ? Number(meta.review_minutes) : null,
     priorReportId: meta.prior_report_id || null,
+    // Functional owner-rep contact (no personal names) — carried onto the
+    // property by upsertReport so the release step works for imported drafts.
+    ownerRep: meta.owner_rep || meta.owner_rep_email
+      ? { name: meta.owner_rep || 'Owner Representative', org: meta.owner_rep_org || null, email: meta.owner_rep_email || null }
+      : null,
     execSummary: {
       ytdNOI: exec.ytdNOI != null ? Number(exec.ytdNOI) : null,
       monthTotalRevenue: totalRevenue,
@@ -204,6 +209,69 @@ checks,outstanding,
 exec,ytdNOI,-1139.15
 exec,occupancyPct,54
 exec,narrative,Single tenant; vacant suite being leased; building listed for sale.
+meta,owner_rep,Asset Manager
+meta,owner_rep_org,Lender or Owner LLC
+meta,owner_rep_email,assetmanager@owner.example
+`;
+
+// A filled, realistic sample that exercises EVERY supported section and field —
+// quoted labels with commas, accounting-style negatives, totals overrides, the
+// owner-rep contact, tenants list, full AR aging, and a bank-rec note. Three
+// review findings are planted on purpose so the first-pass has real work:
+//   1. stated total revenue is $100 above the sum of the revenue lines
+//   2. checks 2204–2205 are neither cleared nor outstanding
+//   3. the bank-rec note contains an unredacted account number
+const CSV_SAMPLE = `section,label,amount
+meta,property,NAI Farbman as Receiver of 300 Galleria Officentre — Receivership
+meta,property_id,galleria-300
+meta,division,Receivership
+meta,period_label,June 1–30 2026
+meta,period_month,2026-06
+meta,period_type,PTD
+meta,prepared_by,Fatima Saleh
+meta,prepared_role,Property Accountant
+meta,reviewed_by,Laura LaChapelle
+meta,reviewed_role,Property Manager
+meta,review_scope,full
+meta,status,draft_pending_signoff
+meta,period_close,2026-06-30
+meta,prepared_date,2026-07-08
+meta,reviewed_date,2026-07-11
+meta,review_minutes,6
+meta,prior_report_id,
+meta,owner_rep,Asset Manager
+meta,owner_rep_org,Galleria Lending Group (Lender)
+meta,owner_rep_email,assetmanager@gallerialending.example
+meta,total_revenue,54980.25
+meta,total_expenses,31962.50
+meta,noi,23017.75
+meta,bankrec_note,Deposits in transit recorded 6/30. Nightly sweep to operating account 8814092331 at Comerica.
+revenue,Base Rent,41250.00
+revenue,"Reimbursable Expense Income (CAM, Tax, Insurance)",12480.25
+revenue,Parking Income,1150.00
+expense,General & Administrative,1240.10
+expense,Utilities,9868.40
+expense,Repairs & Maintenance,4395.00
+expense,Insurance,2410.00
+expense,Real Property Taxes,12500.00
+expense,Management Fee,2749.00
+expense,Real Estate Tax Refund,(1200.00)
+balance,beginningCash,48300.00
+balance,netCashFlow,23017.75
+balance,endingCash,71317.75
+ar,current,2150.00
+ar,d0_30,890.00
+ar,d30_60,0
+ar,d60_90,0
+ar,d90_plus,445.50
+ar,total,3485.50
+checks,issued,2201;2202;2203;2204;2205;2206
+checks,cleared,2201;2202;2206
+checks,outstanding,2203
+exec,ytdNOI,96412.30
+exec,occupancyPct,91
+exec,tenants,Sterling Legal Group;Oakwood Dental;Motor City Analytics;3 others
+exec,narrative,Occupancy steady at 91%; two suites under LOI for Q3 move-in. Receiver continues marketing the remaining vacancy.
 `;
 
 // ── Monthly property list parsing (roster sync) ────────────────────────────
@@ -261,4 +329,4 @@ function parsePropertyList(text) {
   return out;
 }
 
-module.exports = { parseCsv, CSV_TEMPLATE, parsePropertyList };
+module.exports = { parseCsv, CSV_TEMPLATE, CSV_SAMPLE, parsePropertyList };

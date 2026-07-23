@@ -1,0 +1,38 @@
+section,label,amount
+meta,property,28000 Example Road — Receivership
+meta,division,Receivership
+meta,period_label,April 1–30 2026
+meta,period_month,2026-04
+meta,period_type,PTD
+meta,prepared_by,Property Accountant
+meta,reviewed_by,Property Manager
+meta,review_scope,full
+meta,period_close,2026-04-30
+meta,reviewed_date,2026-05-08
+meta,review_minutes,20
+meta,prior_report_id,
+revenue,Base Rent,34874.79
+revenue,Reimbursable Expense Income (CAM/Tax/Insurance),16210.72
+expense,General & Administrative,608.56
+expense,Utilities,8557.73
+expense,Repairs & Maintenance,2935.00
+expense,Insurance,2136.00
+expense,Real Property Taxes,30000.00
+expense,Management Fee,3000.00
+balance,beginningCash,16190.10
+balance,netCashFlow,6262.87
+balance,endingCash,22452.97
+ar,current,455
+ar,d0_30,0
+ar,d30_60,0
+ar,d60_90,0
+ar,d90_plus,0
+checks,issued,10060;10061;10062;10063;10064;10065
+checks,cleared,10060;10061;10065
+checks,outstanding,
+exec,ytdNOI,-1139.15
+exec,occupancyPct,54
+exec,narrative,Single tenant; vacant suite being leased; building listed for sale.
+meta,owner_rep,Asset Manager
+meta,owner_rep_org,Lender or Owner LLC
+meta,owner_rep_email,assetmanager@owner.example

@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseCsv, parsePropertyList } = require('../src/ingest');
+const { parseCsv, parsePropertyList, CSV_SAMPLE } = require('../src/ingest');
 
 const base = ['section,label,amount', 'meta,property,Test Prop', 'meta,period_month,2026-04'];
 
@@ -40,4 +40,25 @@ test('property list round-trips and handles a quoted comma in the name', () => {
   assert.strictEqual(list[0].code, 'GR1');
   assert.strictEqual(list[0].name, '42350 Grand River, Detroit');
   assert.strictEqual(list[0].division, 'Receivership');
+});
+
+test('the filled sample parses with every section and carries the owner rep', () => {
+  const r = parseCsv(CSV_SAMPLE);
+  assert.strictEqual(r.propertyId, 'galleria-300');
+  assert.strictEqual(r.division, 'Receivership');
+  // owner rep rides in as a functional contact (no personal name)
+  assert.deepStrictEqual(r.ownerRep, {
+    name: 'Asset Manager', org: 'Galleria Lending Group (Lender)', email: 'assetmanager@gallerialending.example',
+  });
+  // planted: stated total is $100 above the line sum — must be preserved for the engine
+  const lineSum = r.incomeStatement.revenue.reduce((a, b) => a + b.amount, 0);
+  assert.strictEqual(Math.round((r.incomeStatement.totalRevenue - lineSum) * 100), 10000);
+  // accounting negative parsed
+  assert.strictEqual(r.incomeStatement.expenses.find((e) => e.label === 'Real Estate Tax Refund').amount, -1200);
+  // quoted label with commas intact
+  assert.ok(r.incomeStatement.revenue.some((x) => x.label === 'Reimbursable Expense Income (CAM, Tax, Insurance)'));
+  // checks + aging + tenants all present
+  assert.strictEqual(r.bankRec.checkSequence.issued.length, 6);
+  assert.strictEqual(r.receivablesAging.total, 3485.5);
+  assert.strictEqual(r.execSummary.tenants.length, 4);
 });

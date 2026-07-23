@@ -60,6 +60,14 @@ test('syncProperties refuses a truncated list that would wipe most of the roster
   assert.throws(() => store.syncProperties([{ code: 'CODEA', name: 'Prop A' }], { by: 'T', role: 'Accountant' }));
 });
 
+
+test('an imported draft carries its owner rep onto the property (release step works)', () => {
+  const { parseCsv, CSV_SAMPLE } = require('../src/ingest');
+  const prop = store.upsertReport(parseCsv(CSV_SAMPLE), 'T. Test', 'Accountant');
+  assert.strictEqual(prop.ownerRep.name, 'Asset Manager');
+  assert.strictEqual(prop.ownerRep.email, 'assetmanager@gallerialending.example');
+});
+
 after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
 
 test('re-running the first-pass review invalidates a prior sign-off', () => {

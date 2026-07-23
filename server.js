@@ -6,7 +6,7 @@ const store = require('./src/store');
 const { DIVISION_BLURBS, PROPERTY_LIST_TEMPLATE, SAMPLE_PROPERTY_LIST } = require('./src/data/reports');
 const { runReview } = require('./src/engine');
 const { generateBriefing } = require('./src/llm');
-const { parseCsv, CSV_TEMPLATE, parsePropertyList } = require('./src/ingest');
+const { parseCsv, CSV_TEMPLATE, CSV_SAMPLE, parsePropertyList } = require('./src/ingest');
 const { buildReportDocx, contentDisposition } = require('./src/export/word');
 const connector = require('./src/connector');
 const outlook = require('./src/outlook');
@@ -229,6 +229,9 @@ app.post('/api/send-to-owner', (req, res) => {
 // ── Import a draft report ──────────────────────────────
 app.get('/api/import/template', (req, res) => {
   res.type('text/csv').send(CSV_TEMPLATE);
+});
+app.get('/api/import/sample', (req, res) => {
+  res.type('text/csv').send(CSV_SAMPLE);
 });
 
 app.post('/api/import', (req, res) => {

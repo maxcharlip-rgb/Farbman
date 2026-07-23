@@ -989,6 +989,7 @@ async function renderImport() {
           <textarea id="csvText" class="csv-box" placeholder="section,label,amount&#10;meta,property,...&#10;revenue,Base Rent,34874.79"></textarea>
           <div class="import-actions">
             <a class="run-btn ghost" href="/api/import/template" download="farbman-report-template.csv">Download template</a>
+            <a class="run-btn ghost" href="/api/import/sample" download="farbman-sample-report.csv" title="A filled example — every supported field, with three planted findings for the review to catch">Download filled sample</a>
             <button class="run-btn" id="importBtn">Import & review</button>
           </div>
         </div>

@@ -338,12 +338,13 @@ function upsertReport(report, addedBy, role) {
   delete s.sends[report.id];
   let prop = s.properties.find((p) => p.id === report.propertyId);
   if (!prop) {
-    prop = { id: report.propertyId, name: report.property, division: report.division, currentReportId: report.id };
+    prop = { id: report.propertyId, name: report.property, division: report.division, currentReportId: report.id, ownerRep: report.ownerRep || null };
     s.properties.push(prop);
   } else {
     prop.currentReportId = report.id;
     prop.name = report.property;
     prop.division = report.division;
+    if (report.ownerRep) prop.ownerRep = report.ownerRep; // imported draft carries its owner-rep contact
   }
   save();
   audit({ type: 'import', by: addedBy, role, propertyId: report.propertyId, reportId: report.id, detail: `Imported draft: ${report.property} (${report.period.label})` });

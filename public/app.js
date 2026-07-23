@@ -185,7 +185,6 @@ async function renderProperty(id) {
         <div id="briefing" class="briefing hidden"></div>
         <div id="findings"></div>
         <div id="submitBar"></div>
-        <div id="auditTrail"></div>
         <div id="sendBar"></div>
       </section>
     </div>`;
@@ -199,7 +198,6 @@ async function renderProperty(id) {
     renderSummary(review.summary);
     renderFindings(review, disp, report.id, canDispo);
     renderSubmitBar(d, disp);
-    renderAuditTrail(d.audit);
     loadBriefing(property.id);
   }
   renderSendBar(d);
@@ -679,12 +677,6 @@ function renderSignoffBar(d) {
       else alert(e.message);
     }
   };
-}
-
-function renderAuditTrail(events) {
-  if (!events || !events.length) return ($('#auditTrail').innerHTML = '');
-  $('#auditTrail').innerHTML = `<div class="tier-group"><h3>Audit trail <span class="blurb">· every action on this report, who and when</span></h3>
-    <div class="audit-list">${events.slice().reverse().map((a) => `<div class="audit-row"><span class="atype atype-${a.type}">${esc(a.type)}</span><span class="adetail">${esc(a.detail)}</span><span class="ameta">${esc(a.by || '')} · ${fmtTime(a.at)}</span></div>`).join('')}</div></div>`;
 }
 
 // ── AI briefing ────────────────────────────────────────

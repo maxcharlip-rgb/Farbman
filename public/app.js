@@ -699,17 +699,12 @@ let CHAT_LAST_ID = null;
 
 async function renderChat() {
   if (CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; }
-  if (ROLE === 'Owner Representative') {
-    $('#view').innerHTML = `<div class="panel"><div class="empty">Team chat is internal to Farbman departments.<br>
-      <span class="sm">Sign out (top bar) and sign in as an internal role to join the conversation.</span></div></div>`;
-    return;
-  }
   const [chat, portfolio] = await Promise.all([api('/api/chat'), api('/api/portfolio').catch(() => null)]);
   const props = portfolio ? portfolio.properties : [];
   $('#view').innerHTML = `
     <div class="panel chat-panel">
       <div class="panel-head"><h2>Team chat</h2>
-        <span class="muted sm">Across departments — accountants, managers, and supervisors in one place. You're posting as <strong>${esc(roleLabel(ROLE))}</strong>.</span></div>
+        <span class="muted sm">Everyone on the report in one place — accountants, managers, supervisors, and owner representatives. You're posting as <strong>${esc(roleLabel(ROLE))}</strong>.</span></div>
       <div id="chatList" class="chat-list" aria-live="polite"></div>
       <form id="chatForm" class="chat-form">
         <select id="chatProp" class="chat-prop" title="Optionally tag a property">

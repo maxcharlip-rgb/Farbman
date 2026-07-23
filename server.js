@@ -328,18 +328,15 @@ app.get('/api/trend/:propertyId', (req, res) => {
   });
 });
 
-// ── Team chat — cross-department, internal roles only ──────────────────────
-// The owner representative is the external recipient; internal review
-// discussion (like unsubmitted dispositions) stays off their screen.
+// ── Team chat — every seat can talk, including the owner representative ─────
+// (Review privacy still holds: unsubmitted dispositions and unreleased reports
+// never appear in chat — only what people choose to write.)
 app.get('/api/chat', (req, res) => {
-  const { role } = actor(req);
-  if (role === 'Owner Representative') return res.status(403).json({ error: 'Team chat is internal — switch to an internal role.' });
   res.json({ messages: store.getChat({ after: req.query.after || null }) });
 });
 app.post('/api/chat', async (req, res) => {
   const { text, propertyId } = req.body || {};
   const { by, role } = actor(req);
-  if (role === 'Owner Representative') return res.status(403).json({ error: 'Team chat is internal — switch to an internal role.' });
   const trimmed = String(text || '').trim();
   if (!trimmed) return res.status(400).json({ error: 'message text is required' });
   const prop = propertyId ? store.getProperty(propertyId) : null;

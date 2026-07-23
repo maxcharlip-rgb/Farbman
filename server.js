@@ -277,7 +277,7 @@ app.post('/api/properties/sync', (req, res) => {
 app.post('/api/ping/test', async (req, res) => {
   const { by } = actor(req);
   if (outlook.configured() === false && !require('./src/email').configured())
-    return res.status(503).json({ error: 'Email is not configured — set SMTP_USER and SMTP_PASS (and optionally PING_TO) in the environment.' });
+    return res.status(503).json({ error: 'Email is not configured — set RESEND_API_KEY + PING_TO (works on Render), or SMTP_USER + SMTP_PASS.' });
   const r = await outlook.ping({ handle: 'test', name: 'Test', role: 'Reviewer', email: null }, {
     from: by, text: 'Test ping from Farbman FirstPass — you are all set for the demo.', propertyName: null,
   });
@@ -361,10 +361,17 @@ app.post('/api/chat', async (req, res) => {
   const message = store.addChatMessage({ by, role, text: trimmed, propertyId, to });
   const mentioned = allMentioned.filter((p) => p.role !== role); // don't ping yourself
   if (mentioned.length) {
-    const pings = await Promise.all(mentioned.map((p) => outlook.ping(p, { from: by, text: trimmed, propertyName: prop ? prop.name : null })));
-    store.setChatPings(message.id, pings);
-    message.pings = pings;
-    for (const p of pings) store.audit({ type: 'outlook_ping', by, role, propertyId: propertyId || null, reportId: null, detail: `Outlook ping → ${p.email} (${p.status})` });
+    // Never let a slow mail server hang the chat: wait up to 6s for the pings,
+    // then respond anyway — stragglers finish in the background and attach to
+    // the stored message (visible on the next page load).
+    const work = Promise.all(mentioned.map((p) => outlook.ping(p, { from: by, text: trimmed, propertyName: prop ? prop.name : null })))
+      .then((pings) => {
+        store.setChatPings(message.id, pings);
+        for (const p of pings) store.audit({ type: 'outlook_ping', by, role, propertyId: propertyId || null, reportId: null, detail: `Outlook ping → ${p.email} (${p.status})` });
+        return pings;
+      });
+    const pings = await Promise.race([work, new Promise((r) => setTimeout(() => r(null), 6000))]);
+    message.pings = pings || mentioned.map((p) => ({ to: p.handle, email: p.email, status: 'sending' }));
   }
   res.json({ message, outlookConfigured: outlook.configured() });
 });

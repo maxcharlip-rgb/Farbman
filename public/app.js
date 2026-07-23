@@ -738,7 +738,7 @@ async function renderChat() {
           <span class="muted sm">${esc(m.by)} · ${fmtTime(m.at)}</span></div>
         <div class="chat-text">${esc(m.text).replace(/@(accountant|manager|supervisor|ownerrep|max|all)/gi, '<span class="mention">@$1</span>')}${m.propertyId ? ` <a class="chat-tag" href="#/property/${esc(m.propertyId)}">${esc(propName(m.propertyId))}</a>` : ''}</div>
         ${m.to ? `<div class="dm-chip" title="Direct message — nobody else can see it">🔒 Private · ${m.to.map(roleLabel).join(' + ')}</div>` : ''}
-        ${m.pings && m.pings.length ? `<div class="ping-row">${m.pings.map((p) => `<span class="ping-chip" title="${esc(p.email)}">${p.status === 'sent' ? `✉ emailed @${esc(p.to)}` : `✉ pinged @${esc(p.to)} via Outlook${p.status === 'simulated' ? ' · demo' : ' · ' + esc(p.status)}`}</span>`).join('')}</div>` : ''}`;
+        ${m.pings && m.pings.length ? `<div class="ping-row">${m.pings.map((p) => `<span class="ping-chip" title="${esc(p.email)}">${p.status === 'sent' ? `✉ emailed @${esc(p.to)}` : p.status === 'sending' ? `✉ emailing @${esc(p.to)}…` : `✉ pinged @${esc(p.to)} via Outlook${p.status === 'simulated' ? ' · demo' : ' · ' + esc(p.status)}`}</span>`).join('')}</div>` : ''}`;
       el.appendChild(row);
       CHAT_LAST_ID = m.id;
     }

@@ -115,11 +115,14 @@ public/                    Frontend (portfolio, workspace, calibration, audit, i
 
 ## Real email for @mention pings (demo)
 
-No Azure needed — plain SMTP. In Render → Environment add:
+Use Resend (free, HTTPS — works on Render, whose free tier blocks outbound
+SMTP). In Render → Environment add:
 
-- `SMTP_USER` — the Gmail address to send from
-- `SMTP_PASS` — a Gmail **app password** (Google Account → Security → 2-Step Verification → App passwords)
-- `PING_TO` — optional; where pings land. Leave it unset and they go to `SMTP_USER` itself
+- `RESEND_API_KEY` — sign up at resend.com with the inbox you want pinged, then API Keys → Create
+- `PING_TO` — that same address (Resend's free tier delivers to the account owner's address)
+
+Plain SMTP (`SMTP_USER`/`SMTP_PASS`, optional `PING_TO`) is also supported for
+hosts that allow it; Resend wins when both are configured.
 
 Saving env vars triggers a redeploy (~1 min). Then verify with
 `curl -X POST https://<host>/api/ping/test` — HTTP 200 means the mail went out,

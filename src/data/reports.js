@@ -561,7 +561,7 @@ const PROPERTIES = [
     currentReportId: 'grand-river-42350-2026-06',
     // The owner rep for a receivership is the lender's asset manager (report is
     // also filed with the court). Addresses use the reserved .example TLD.
-    ownerRep: { name: 'Karen Whitlock', title: 'Asset Manager', org: 'Midwest Capital Partners (Lender)', email: 'kwhitlock@midwestcapital.example' },
+    ownerRep: { name: 'Asset Manager', org: 'Midwest Capital Partners (Lender)', email: 'assetmanager@midwestcapital.example' },
   },
   {
     id: 'novi-commons-jv',
@@ -570,7 +570,7 @@ const PROPERTIES = [
     name: 'Novi Commons — Farbman / Greenfield Joint Venture',
     division: 'Joint Venture',
     currentReportId: 'novi-commons-jv-2026-06',
-    ownerRep: { name: 'Greg Toland', title: 'JV Partner Representative', org: 'Greenfield Partners', email: 'gtoland@greenfieldpartners.example' },
+    ownerRep: { name: 'JV Partner Representative', org: 'Greenfield Partners', email: 'partners@greenfieldpartners.example' },
   },
   {
     id: 'orchard-lake-3p',
@@ -579,7 +579,7 @@ const PROPERTIES = [
     name: 'Orchard Lake Professional Plaza — 3rd Party Management',
     division: '3rd Party',
     currentReportId: 'orchard-lake-3p-2026-06',
-    ownerRep: { name: 'Susan Alvarez', title: 'Owner Representative', org: 'Orchard Lake Owners LLC', email: 'salvarez@orchardlakeowners.example' },
+    ownerRep: { name: 'Owner Representative', org: 'Orchard Lake Owners LLC', email: 'owner@orchardlakeowners.example' },
   },
   {
     id: 'twelve-mile-reo',
@@ -588,7 +588,7 @@ const PROPERTIES = [
     name: '28000 Twelve Mile Road — REO (Lender-Owned)',
     division: 'REO',
     currentReportId: 'twelve-mile-reo-2026-06',
-    ownerRep: { name: 'Dan Kroll', title: 'REO Asset Manager', org: 'First Michigan Bank — REO Dept', email: 'dkroll@firstmichigan.example' },
+    ownerRep: { name: 'REO Asset Manager', org: 'First Michigan Bank — REO Dept', email: 'reo@firstmichigan.example' },
   },
 ];
 
@@ -612,20 +612,20 @@ function getReport(id) {
 // Yardi). The tool reconciles its roster against this so nobody re-keys
 // properties. Match key is the property CODE.
 const PROPERTY_LIST_TEMPLATE = `code,name,division,owner_rep,owner_rep_email
-GR42350,NAI Farbman as Receiver of 42350 Grand River Avenue — Receivership,Receivership,Karen Whitlock,kwhitlock@midwestcapital.example
-NOVICJV,Novi Commons — Farbman / Greenfield Joint Venture,Joint Venture,Greg Toland,gtoland@greenfieldpartners.example
+GR42350,NAI Farbman as Receiver of 42350 Grand River Avenue — Receivership,Receivership,Asset Manager,assetmanager@midwestcapital.example
+NOVICJV,Novi Commons — Farbman / Greenfield Joint Venture,Joint Venture,JV Partner Representative,partners@greenfieldpartners.example
 `;
 
 // A realistic monthly list: the 4 current properties (unchanged) plus two new
 // ones that were added to the portfolio this month — the tool picks them up
 // automatically, no manual entry.
 const SAMPLE_PROPERTY_LIST = `code,name,division,owner_rep,owner_rep_email
-GR42350,NAI Farbman as Receiver of 42350 Grand River Avenue — Receivership,Receivership,Karen Whitlock,kwhitlock@midwestcapital.example
-NOVICJV,Novi Commons — Farbman / Greenfield Joint Venture,Joint Venture,Greg Toland,gtoland@greenfieldpartners.example
-ORCHLK3P,Orchard Lake Professional Plaza — 3rd Party Management,3rd Party,Susan Alvarez,salvarez@orchardlakeowners.example
-TWMILREO,28000 Twelve Mile Road — REO (Lender-Owned),REO,Dan Kroll,dkroll@firstmichigan.example
-SOUTHFLD3P,Southfield Town Center — 3rd Party Management,3rd Party,Marcus Bell,mbell@southfieldowners.example
-LIVREC001,NAI Farbman as Receiver of 19500 Middlebelt — Receivership,Receivership,Priya Nair,pnair@lakeshorelending.example
+GR42350,NAI Farbman as Receiver of 42350 Grand River Avenue — Receivership,Receivership,Asset Manager,assetmanager@midwestcapital.example
+NOVICJV,Novi Commons — Farbman / Greenfield Joint Venture,Joint Venture,JV Partner Representative,partners@greenfieldpartners.example
+ORCHLK3P,Orchard Lake Professional Plaza — 3rd Party Management,3rd Party,Owner Representative,owner@orchardlakeowners.example
+TWMILREO,28000 Twelve Mile Road — REO (Lender-Owned),REO,REO Asset Manager,reo@firstmichigan.example
+SOUTHFLD3P,Southfield Town Center — 3rd Party Management,3rd Party,Owner Representative,owner@southfieldowners.example
+LIVREC001,NAI Farbman as Receiver of 19500 Middlebelt — Receivership,Receivership,Asset Manager,assetmanager@lakeshorelending.example
 `;
 
 module.exports = { REPORTS, PROPERTIES, DIVISION_COUNTS, DIVISION_BLURBS, getReport, PROPERTY_LIST_TEMPLATE, SAMPLE_PROPERTY_LIST };

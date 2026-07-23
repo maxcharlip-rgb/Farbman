@@ -824,7 +824,7 @@ async function renderSync() {
         <div>
           <label class="field"><span>Upload property list (CSV)</span><input type="file" id="listFile" accept=".csv,text/csv" /></label>
           <p class="muted sm">or paste below — columns: <code>code, name, division, owner_rep, owner_rep_email</code></p>
-          <textarea id="listText" class="csv-box" placeholder="code,name,division,owner_rep,owner_rep_email&#10;GR42350,42350 Grand River — Receivership,Receivership,Karen Whitlock,kwhitlock@midwestcapital.example"></textarea>
+          <textarea id="listText" class="csv-box" placeholder="code,name,division,owner_rep,owner_rep_email&#10;GR42350,42350 Grand River — Receivership,Receivership,Asset Manager,assetmanager@midwestcapital.example"></textarea>
           <div class="import-actions">
             <button class="run-btn ghost" id="sampleBtn">Load sample list</button>
             <a class="run-btn ghost" href="/api/properties/template" download="farbman-property-list-template.csv">Download template</a>
